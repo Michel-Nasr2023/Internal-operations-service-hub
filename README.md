@@ -1,24 +1,24 @@
 # Internal Operations Service Hub
 
-The Internal Operations Service Hub is an internal helpdesk system for managing employee operational requests from creation through resolution and closure.
+The Internal Operations Service Hub is an internal helpdesk system for managing employee operational requests from creation through resolution.
 
 ## What It Does
 
-- Allows department leaders and employees to submit requests with required details and attachments.
+- Allows every employee to submit requests with required details.
 - Routes requests to the appropriate operational team based on project and issue type.
 - Lets Helpdesk review requests, set priorities, and approve or reject them.
-- Supports team assignment, assignee claims, progress updates, completion evidence, and department-chief approval.
-- Sends alerts for unassigned, unclaimed, overdue, and completed requests.
+- Supports Helpdesk assignment, assignee claims, and progress updates.
+- Sends alerts for unclaimed, overdue, and resolved requests.
 - Maintains an audit trail for workflow and authorization-sensitive actions.
 
 ## Main Workflow
 
 ```text
-Created -> Helpdesk Review -> Approved -> Assigned -> In Progress
-         -> Completion Approval -> Resolved -> Closed
-
+Created -> Helpdesk Review -> Approved -> Assigned -> In Progress -> Resolved
 Helpdesk Review -> Rejected
 ```
+
+If an assignee does not claim an assigned request within 24 hours, Helpdesk is notified. Helpdesk is also notified when an in-progress request exceeds its expected completion time and when a request is resolved.
 
 ## Project Scope
 

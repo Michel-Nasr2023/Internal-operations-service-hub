@@ -4,16 +4,16 @@
 
 ### Purpose
 
-The Internal Operations Service Hub provides a controlled way for employees and HR(Helpdesk) to resolve internal operational requests. It replaces unstructured issue handling with a traceable workflow from request creation through requester approval and closure.
+The Internal Operations Service Hub provides a controlled way for employees and the Helpdesk Team to manage internal operational requests. It replaces unstructured issue handling with a traceable workflow from request creation through resolution.
 
 ### Scope
 
 - Employees submit requests (tickets) and track the progress
-- HR receives and responds to all requests.
-- 3rd party program that manages the internal operational service hub
+- Helpdesk receives and responds to all requests.
+- Third-party workflow processing may be used to manage the internal operational service hub
 - Zero trust, so will need to implement failure cases
-- Inside workflow requests a processing engine (3rd party program)
-- Outside: actual Company database
+- The workflow processing engine is inside the workflow boundary
+- The actual company database is outside this service boundary
 
 
 The system is for internal staff only. Payroll, external customer support, and vendor management are outside this architecture.
@@ -25,12 +25,11 @@ The system is for internal staff only. Payroll, external customer support, and v
 2. The web interface validates required fields and attachments before submission.
 3. A validated request is sent to the workflow service through an API request.
 4. The workflow service identifies the appropriate team using the issue type and project, then places the request in the relevant queue.
-5. The HR (Helpdesk) approves or rejects the request and sets its priority. Rejections require an explanation.
-6. A team leader assigns a clear assignee and expected completion time. If the request is not assigned within 24 hours, Helpdesk is alerted.
-7. The assignee claims the request. The work timer starts at claim time. If it remains unclaimed for more than 24 hours, the team leader is notified.
-8. The assignee works on the request and records status updates and comments. A breach of the expected completion time notifies the team leader.
-9. The assignee submits completion notes and proof. The system accepts completion only when the required evidence is present.
-10. The department chief approves completion and records satisfaction. The request is then resolved and remains available through its audit trail.
+5. The Helpdesk Team approves or rejects the request and sets its priority. Rejections require an explanation.
+6. The Helpdesk Team assigns a clear assignee and expected completion time.
+7. The assignee claims the request, which starts the work timer. If it remains unclaimed for more than 24 hours, Helpdesk is notified.
+8. The assignee works on the request and updates its status to `In Progress`. If the expected completion time is exceeded, Helpdesk is notified.
+9. The assignee updates the status to `Resolved` when the issue is complete. Helpdesk is notified when the request is resolved.
 
 ### Core Components
 
@@ -49,11 +48,11 @@ The system is for internal staff only. Payroll, external customer support, and v
 The web interface, workflow service, and database are treated as separate trust zones. No component implicitly trusts another component merely because it is inside the organization or network.
 
 - Authenticate every user and service request.
-- Authorize actions by role and request ownership, including employee, HR, Helpdesk, team leader, assignee, department chief, and administrator roles.
+- Authorize actions by role and request ownership, including employee, Helpdesk, and assignee roles.
 - Encrypt traffic between the browser, workflow service, and database.
 - Encrypt sensitive stored data and attachments where organizational policy requires it.
 - Validate all input on the server, even when client-side validation is present.
-- Record authentication, authorization, request changes, assignments, approvals, status changes, notifications, and completion evidence in an append-only audit trail.
+- Record authentication, authorization, request changes, assignments, approvals, status changes, notifications, and resolution details in an append-only audit trail.
 - Avoid exposing internal error details to users; show a safe error reference and log diagnostic details securely.
 
 ### Failure and Recovery Behavior
@@ -81,7 +80,7 @@ Assignment, priority, status, timers, approvals, deadlines, and notifications ar
 
 ### Decision 3: Use explicit state transitions
 
-Requests should move through controlled states such as `Created`, `Pending Helpdesk Review`, `Approved`, `Rejected`, `Assigned`, `In Progress`, `Pending Completion Approval`, `Resolved`, and `Closed`. Each transition must record its actor, timestamp, and reason where applicable.
+Requests should move through controlled states such as `Created`, `Pending Helpdesk Review`, `Approved`, `Rejected`, `Assigned`, `In Progress`, and `Resolved`. Each transition must record its actor, timestamp, and reason where applicable.
 
 ### Decision 5: Make retries safe
 

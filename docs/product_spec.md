@@ -21,30 +21,27 @@ Employees/ Department managers/ IT Team/ HR/ BA/ Finance department/ Procurement
 
 ## 5. Functional requirements:
 
-1. Allowance of every chief of department to send mails for issues
+1. Allowance of every employee to send a request for issues.
 
 2. System check and validates all fields before submitting the issue
    2.1 If fields are wrong, the system won't allow submission of the issue.
 
-3. System will auto assign the issue to the right team based on issue type and project.
+3. Helpdesk Team can approve or reject requests
+   3.1 In case of a rejection, an explanation is required.
 
-4. Helpdesk Team can approve or reject requests
-   3.1 in case of a rejection, it will need an explanation
+4. Helpdesk Team will set priority levels: low, medium, high, urgent
 
-5. Helpdesk Team will set priority levels: low, medium, high, urgent
+5. Helpdesk Team will assign a clear assignee with the expected time to finish the task.
 
-6. Team leader must assign a clear assignee with the expected time to finish the task.
-   6.1 If he didn't assign the issue within 24h, then the system must alert the HelpDesk Team.
+6. The timer starts when the assignee claims the issue.
+   6.1 If the assignee does not claim the issue within 24 hours, the system will notify the Helpdesk Team.
 
-7. Timer starts when the assignee claim the issue  
-   7.1 if he didn't claim the issue and stays on hold more than 24h, the system will notify the Team leader
+7. The assignee works on the issue and the status is updated to "In Progress".
+   7.1 If the issue remains in progress beyond the expected completion time, the system will notify the Helpdesk Team.
 
-8. Assignee works on issue and status should be updated
-   8.1 if the issue (ticket) he's working on persist more than the expected time, team leder gets notified
+8. On completion of the issue, the assignee must update the status of the ticket to "Resolved".
 
-9. On completition of the issue, the assignee must submit with proof of completition and notes for the system to accept it.
-
-10. Chief of department must approve the completition of the ticket and his satisfaction.
+9. The Helpdesk Team is notified when the status is "Resolved".
 
 ## 6. Non-Fonctional requirements
 
@@ -84,9 +81,9 @@ Employees/ Department managers/ IT Team/ HR/ BA/ Finance department/ Procurement
 
 ## 11.Acceptance criteria
 
-- A team leader can create a request with required fields and attachments
+- An employee can create a request with required fields and attachments
 - The request is assigned to the correct team or queue
-- HelpDesk can approve or reject high-priority requests
+- Helpdesk can approve or reject requests, with an explanation required for rejection
 - The assignee can update status and add comments
 - The system records all actions in an audit log
 - The requester can see progress and resolution status
