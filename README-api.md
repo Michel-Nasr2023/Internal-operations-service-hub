@@ -1,15 +1,15 @@
 # API
 
-This repository contains a minimal NestJS API for the documented ticket workflow. The first implementation uses in-memory storage so the HTTP contract and workflow rules can be exercised before adding a relational database.
+This repository contains a NestJS API for the documented ticket workflow. Ticket records and audit events are persisted in SQLite through TypeORM.
 
 ## Run
 
 ```text
-npm install
-npm run start:dev
+npm install --prefix backend
+npm run backend
 ```
 
-The API listens on `http://localhost:3000/api`.
+The API listens on `http://localhost:3000/api` when started from the project root.
 
 For now, authentication is represented by these required headers:
 

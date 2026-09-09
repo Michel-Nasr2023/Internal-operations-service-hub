@@ -1,13 +1,16 @@
 import { ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
 import { randomUUID } from 'node:crypto';
+import { Repository } from 'typeorm';
 import { AssignTicketDto, CreateTicketDto, RejectTicketDto, SetPriorityDto } from './ticket.dto';
+import { TicketEntity } from './ticket.entity';
 import { AuthenticatedUser, AuditEvent, Priority, Ticket, TicketStatus } from './ticket.types';
 
 @Injectable()
 export class TicketsService {
-  private readonly tickets = new Map<string, Ticket>();
+  constructor(@InjectRepository(TicketEntity) private readonly ticketRepository: Repository<TicketEntity>) {}
 
-  create(dto: CreateTicketDto, user: AuthenticatedUser): Ticket {
+  async create(dto: CreateTicketDto, user: AuthenticatedUser): Promise<Ticket> {
     const now = new Date().toISOString();
     const ticket: Ticket = {
       id: randomUUID(),
@@ -25,12 +28,11 @@ export class TicketsService {
     };
 
     this.addAudit(ticket, user.id, 'TICKET_SUBMITTED', TicketStatus.CREATED, ticket.status);
-    this.tickets.set(ticket.id, ticket);
-    return ticket;
+    return this.ticketRepository.save(ticket);
   }
 
-  list(user: AuthenticatedUser, priority?: Priority): Ticket[] {
-    const tickets = [...this.tickets.values()].filter((ticket) => {
+  async list(user: AuthenticatedUser, priority?: Priority): Promise<Ticket[]> {
+    const tickets = (await this.ticketRepository.find()).filter((ticket) => {
       if (user.role === 'helpdesk' || user.role === 'administrator') return true;
       if (user.role === 'assignee') return ticket.assigneeId === user.id;
       return ticket.requesterId === user.id;
@@ -39,32 +41,32 @@ export class TicketsService {
     return priority ? tickets.filter((ticket) => ticket.priority === priority) : tickets;
   }
 
-  findOne(id: string, user: AuthenticatedUser): Ticket {
-    const ticket = this.get(id);
+  async findOne(id: string, user: AuthenticatedUser): Promise<Ticket> {
+    const ticket = await this.get(id);
     this.assertCanRead(ticket, user);
     return ticket;
   }
 
-  approve(id: string, dto: SetPriorityDto, user: AuthenticatedUser): Ticket {
-    const ticket = this.get(id);
+  async approve(id: string, dto: SetPriorityDto, user: AuthenticatedUser): Promise<Ticket> {
+    const ticket = await this.get(id);
     this.assertHelpdesk(user);
     this.assertStatus(ticket, TicketStatus.PENDING_HELPDESK_REVIEW);
     ticket.priority = dto.priority;
     this.transition(ticket, user.id, TicketStatus.APPROVED, 'TICKET_APPROVED');
-    return ticket;
+    return this.ticketRepository.save(ticket);
   }
 
-  reject(id: string, dto: RejectTicketDto, user: AuthenticatedUser): Ticket {
-    const ticket = this.get(id);
+  async reject(id: string, dto: RejectTicketDto, user: AuthenticatedUser): Promise<Ticket> {
+    const ticket = await this.get(id);
     this.assertHelpdesk(user);
     this.assertStatus(ticket, TicketStatus.PENDING_HELPDESK_REVIEW);
     ticket.rejectionReason = dto.reason;
     this.transition(ticket, user.id, TicketStatus.REJECTED, 'TICKET_REJECTED', dto.reason);
-    return ticket;
+    return this.ticketRepository.save(ticket);
   }
 
-  setPriority(id: string, dto: SetPriorityDto, user: AuthenticatedUser): Ticket {
-    const ticket = this.get(id);
+  async setPriority(id: string, dto: SetPriorityDto, user: AuthenticatedUser): Promise<Ticket> {
+    const ticket = await this.get(id);
     this.assertHelpdesk(user);
     if (![TicketStatus.APPROVED, TicketStatus.ASSIGNED].includes(ticket.status)) {
       throw new ConflictException('Priority can only be changed after approval and before work starts');
@@ -72,11 +74,11 @@ export class TicketsService {
     ticket.priority = dto.priority;
     this.touch(ticket);
     this.addAudit(ticket, user.id, 'PRIORITY_CHANGED');
-    return ticket;
+    return this.ticketRepository.save(ticket);
   }
 
-  assign(id: string, dto: AssignTicketDto, user: AuthenticatedUser): Ticket {
-    const ticket = this.get(id);
+  async assign(id: string, dto: AssignTicketDto, user: AuthenticatedUser): Promise<Ticket> {
+    const ticket = await this.get(id);
     this.assertHelpdesk(user);
     this.assertStatus(ticket, TicketStatus.APPROVED);
     const now = new Date();
@@ -84,11 +86,11 @@ export class TicketsService {
     ticket.assignedAt = now.toISOString();
     ticket.expectedDurationHours = dto.expectedDurationHours;
     this.transition(ticket, user.id, TicketStatus.ASSIGNED, 'TICKET_ASSIGNED');
-    return ticket;
+    return this.ticketRepository.save(ticket);
   }
 
-  claim(id: string, user: AuthenticatedUser): Ticket {
-    const ticket = this.get(id);
+  async claim(id: string, user: AuthenticatedUser): Promise<Ticket> {
+    const ticket = await this.get(id);
     if (user.role !== 'assignee' && user.role !== 'administrator') {
       throw new ForbiddenException('Only the selected assignee can claim a ticket');
     }
@@ -100,11 +102,11 @@ export class TicketsService {
     ticket.claimedAt = now.toISOString();
     ticket.dueAt = new Date(now.getTime() + (ticket.expectedDurationHours ?? 0) * 60 * 60 * 1000).toISOString();
     this.transition(ticket, user.id, TicketStatus.IN_PROGRESS, 'TICKET_CLAIMED');
-    return ticket;
+    return this.ticketRepository.save(ticket);
   }
 
-  resolve(id: string, user: AuthenticatedUser): Ticket {
-    const ticket = this.get(id);
+  async resolve(id: string, user: AuthenticatedUser): Promise<Ticket> {
+    const ticket = await this.get(id);
     if (user.role !== 'assignee' && user.role !== 'administrator') {
       throw new ForbiddenException('Only the assignee can resolve a ticket');
     }
@@ -114,15 +116,15 @@ export class TicketsService {
     this.assertStatus(ticket, TicketStatus.IN_PROGRESS);
     ticket.resolvedAt = new Date().toISOString();
     this.transition(ticket, user.id, TicketStatus.RESOLVED, 'TICKET_RESOLVED');
-    return ticket;
+    return this.ticketRepository.save(ticket);
   }
 
-  auditEvents(id: string, user: AuthenticatedUser): AuditEvent[] {
-    return this.findOne(id, user).auditEvents;
+  async auditEvents(id: string, user: AuthenticatedUser): Promise<AuditEvent[]> {
+    return (await this.findOne(id, user)).auditEvents;
   }
 
-  private get(id: string): Ticket {
-    const ticket = this.tickets.get(id);
+  private async get(id: string): Promise<TicketEntity> {
+    const ticket = await this.ticketRepository.findOneBy({ id });
     if (!ticket) throw new NotFoundException('Ticket not found');
     return ticket;
   }

@@ -2,3 +2,5 @@ node_modules
 dist
 .env
 coverage
+backend/data
+frontend/node_modules

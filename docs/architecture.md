@@ -15,11 +15,9 @@ The Internal Operations Service Hub provides a controlled way for employees and 
 - The workflow processing engine is inside the workflow boundary
 - The actual company database is outside this service boundary
 
-
 The system is for internal staff only. Payroll, external customer support, and vendor management are outside this architecture.
 
 ## 2. Structure and Flow
-
 
 1. An employee opens the web interface and creates a request.
 2. The web interface validates required fields and attachments before submission.
@@ -33,13 +31,13 @@ The system is for internal staff only. Payroll, external customer support, and v
 
 ### Core Components
 
-| Component | Responsibility |
-|---|---|
-| Web interface | User entry point, forms, validation feedback, request tracking, and error display |
-| Workflow service | Routing, approvals, priorities, assignment, timers, notifications, status transitions, and audit events |
-| Company database | Requests, users, assignments, comments, attachments metadata, deadlines, approvals, and audit records |
-| Notification mechanism | Alerts for assignment, inactivity, deadline breaches, rejection, completion, and requester updates |
-| Identity provider | Authenticates employees and supplies identity and role information |
+| Component              | Responsibility                                                                                          |
+| ---------------------- | ------------------------------------------------------------------------------------------------------- |
+| Web interface          | User entry point, forms, validation feedback, request tracking, and error display                       |
+| Workflow service       | Routing, approvals, priorities, assignment, timers, notifications, status transitions, and audit events |
+| Company database       | Requests, users, assignments, comments, attachments metadata, deadlines, approvals, and audit records   |
+| Notification mechanism | Alerts for assignment, inactivity, deadline breaches, rejection, completion, and requester updates      |
+| Identity provider      | Authenticates employees and supplies identity and role information                                      |
 
 ## 3. Trust and Resilience
 
@@ -57,13 +55,13 @@ The web interface, workflow service, and database are treated as separate trust 
 
 ### Failure and Recovery Behavior
 
-| Failure | User-visible behavior | Recovery approach |
-|---|---|---|
-| Web interface cannot load | Show a web interface error | Allow retry, provide a correlation/reference ID, and monitor frontend availability |
-| Workflow request fails | Show a request failure | Use bounded retries for transient failures, avoid duplicate submissions with an idempotency key, and log the failed request |
-| Database is offline | Show a database error or temporary-unavailable state | Keep the service available for safe read-only behavior where possible, retry connection, alert operators, and restore from backups |
-| Notification delivery fails | Request workflow remains authoritative | Persist notification events, retry asynchronously, and expose undelivered notifications for operational follow-up |
-| Deadline or timer processing fails | Preserve the request and deadline data | Run scheduled jobs idempotently, detect missed jobs, and replay pending alerts |
+| Failure                            | User-visible behavior                                | Recovery approach                                                                                                                  |
+| ---------------------------------- | ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| Web interface cannot load          | Show a web interface error                           | Allow retry, provide a correlation/reference ID, and monitor frontend availability                                                 |
+| Workflow request fails             | Show a request failure                               | Use bounded retries for transient failures, avoid duplicate submissions with an idempotency key, and log the failed request        |
+| Database is offline                | Show a database error or temporary-unavailable state | Keep the service available for safe read-only behavior where possible, retry connection, alert operators, and restore from backups |
+| Notification delivery fails        | Request workflow remains authoritative               | Persist notification events, retry asynchronously, and expose undelivered notifications for operational follow-up                  |
+| Deadline or timer processing fails | Preserve the request and deadline data               | Run scheduled jobs idempotently, detect missed jobs, and replay pending alerts                                                     |
 
 The system should provide reliable uptime for internal business continuity and fast response for common operations. Database backups, restore testing, health checks, structured logs, metrics, and alerts are required operational safeguards.
 
@@ -77,7 +75,6 @@ The web interface handles presentation and user input, while the workflow servic
 
 Assignment, priority, status, timers, approvals, deadlines, and notifications are controlled by the workflow service. The company database persists the resulting data.
 
-
 ### Decision 3: Use explicit state transitions
 
 Requests should move through controlled states such as `Created`, `Pending Helpdesk Review`, `Approved`, `Rejected`, `Assigned`, `In Progress`, and `Resolved`. Each transition must record its actor, timestamp, and reason where applicable.
@@ -85,7 +82,6 @@ Requests should move through controlled states such as `Created`, `Pending Helpd
 ### Decision 5: Make retries safe
 
 API submissions and background jobs must be idempotent. A request identifier or idempotency key prevents a retry from creating duplicate tickets, assignments, completion records, or notifications.
-
 
 ### Decision 6: Protect sensitive internal information by default
 
