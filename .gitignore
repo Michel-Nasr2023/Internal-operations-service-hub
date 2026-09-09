@@ -1,6 +1,15 @@
 node_modules
 dist
 .env
+.env.*
+!.env.example
 coverage
 backend/data
 frontend/node_modules
+*.tsbuildinfo
+*.sqlite
+*.sqlite3
+*.db
+*.log
+.DS_Store
+Thumbs.db
