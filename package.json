@@ -5,6 +5,8 @@
     "backend": "npm --prefix backend run start:dev",
     "backend:build": "npm --prefix backend run build",
     "backend:test": "npm --prefix backend test",
+    "backend:test:integration": "npm --prefix backend run test:integration",
+    "backend:test:e2e": "npm --prefix backend run test:e2e",
     "frontend": "npm --prefix frontend run dev",
     "frontend:build": "npm --prefix frontend run build"
   }

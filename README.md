@@ -34,6 +34,35 @@ npm run frontend
 
 The API runs at `http://localhost:3000/api` and the frontend runs at the Vite URL shown in the terminal. SQLite stores data in `backend/data/tickets.sqlite`.
 
+## Run Tests and Builds
+
+Run the business workflow regression tests:
+
+```text
+npm run backend:test
+```
+
+Run the real SQLite integration test:
+
+```text
+npm run backend:test:integration
+```
+
+Run the API E2E test, which verifies the allowed Helpdesk action, denied employee action, and invalid request:
+
+```text
+npm run backend:test:e2e
+```
+
+Build both applications:
+
+```text
+npm run backend:build
+npm run frontend:build
+```
+
+See [Week 3 full-stack delivery](docs/week3-full-stack-delivery.md) for the API contract, local identities, expected frontend failure, and test scenarios.
+
 ## What It Does
 
 - Allows every employee to submit requests with required details.

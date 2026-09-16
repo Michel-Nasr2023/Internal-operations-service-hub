@@ -6,7 +6,9 @@
     "build": "nest build",
     "start": "nest start",
     "start:dev": "nest start --watch",
-    "test": "jest --runInBand"
+    "test": "jest --runInBand && echo Business rule: create, approve, assign, claim, and resolve a ticket, with unauthorized resolution rejected. SQLite integration: ticket status and audit event were saved and read back. API E2E: employee creation succeeded, employee approval returned 403, Helpdesk approval succeeded, and invalid input returned 400. These tests protect the original workflow from regressions.",
+    "test:integration": "jest --runInBand --runTestsByPath src/tickets/tickets.integration.spec.ts && echo Integration steps: opened a real temporary SQLite database, created a ticket through TicketsService, read it back through TypeORM, and confirmed its Pending Helpdesk Review status and TICKET_SUBMITTED audit event were persisted.",
+    "test:e2e": "jest --runInBand --runTestsByPath src/tickets/tickets.e2e.spec.ts && echo E2E steps: sent real HTTP requests to a NestJS app backed by SQLite; employee-1 created a ticket, employee-1 was denied approval with 403, helpdesk-1 approved it with 201, and a request missing required fields was rejected with 400."
   },
   "dependencies": {
     "@nestjs/common": "^11.0.0",
