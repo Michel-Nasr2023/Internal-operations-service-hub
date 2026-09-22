@@ -2,6 +2,7 @@ import { DataSource } from 'typeorm';
 import { TicketEntity } from './ticket.entity';
 import { TicketsService } from './tickets.service';
 import { TicketStatus } from './ticket.types';
+import { RqstyAiService } from '../ai/rqsty-ai.service';
 
 describe('TicketsService SQLite integration', () => {
   let dataSource: DataSource;
@@ -20,7 +21,18 @@ describe('TicketsService SQLite integration', () => {
   });
 
   it('persists a created ticket and its audit event in SQLite', async () => {
-    const service = new TicketsService(dataSource.getRepository(TicketEntity));
+    const rqstyAiService = {
+      generateStructuredResult: async (input: { employeeId: string; jobTitle: string; productName: string; freeText: string }) => ({
+        employeeId: input.employeeId,
+        jobTitle: input.jobTitle,
+        freeText: input.freeText,
+        productName: input.productName,
+        issueType: 'access' as const,
+        severity: 'high' as const,
+        recommendedAction: 'Verify account permissions and re-test access.',
+      }),
+    } as unknown as RqstyAiService;
+    const service = new TicketsService(dataSource.getRepository(TicketEntity), rqstyAiService);
     const employee = { id: 'employee-1', role: 'employee' as const };
 
     const created = await service.create(

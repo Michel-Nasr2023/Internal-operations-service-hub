@@ -3,6 +3,7 @@ import { Repository } from 'typeorm';
 import { TicketEntity } from './ticket.entity';
 import { TicketsService } from './tickets.service';
 import { Priority, TicketStatus } from './ticket.types';
+import { RqstyAiService } from '../ai/rqsty-ai.service';
 
 describe('TicketsService', () => {
   function createService(): TicketsService {
@@ -16,7 +17,19 @@ describe('TicketsService', () => {
       findOneBy: async ({ id }: { id: string }) => records.get(id),
     } as unknown as Repository<TicketEntity>;
 
-    return new TicketsService(repository);
+    const rqstyAiService = {
+      generateStructuredResult: async (input: { employeeId: string; jobTitle: string; productName: string; freeText: string }) => ({
+        employeeId: input.employeeId,
+        jobTitle: input.jobTitle,
+        freeText: input.freeText,
+        productName: input.productName,
+        issueType: 'hardware' as const,
+        severity: 'low' as const,
+        recommendedAction: 'Run a hardware health check.',
+      }),
+    } as unknown as RqstyAiService;
+
+    return new TicketsService(repository, rqstyAiService);
   }
 
   it('moves a ticket through the documented workflow', async () => {

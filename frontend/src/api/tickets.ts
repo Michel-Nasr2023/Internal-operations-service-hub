@@ -1,3 +1,5 @@
+import { getAuthHeaders } from './auth';
+
 export interface CreateTicketInput {
   title: string;
   description: string;
@@ -15,17 +17,21 @@ export interface Ticket {
   project: string;
   status: string;
   createdAt: string;
+  aiResult?: {
+    employeeId: string;
+    jobTitle: string;
+    freeText: string;
+    productName: string;
+    issueType: 'hardware' | 'software' | 'network' | 'access';
+    severity: 'low' | 'medium' | 'high' | 'urgent';
+    recommendedAction: string;
+  };
 }
 
 const apiUrl = import.meta.env.VITE_API_URL ?? 'http://localhost:3000/api';
 
-const employeeHeaders = {
-  'x-user-id': 'employee-1',
-  'x-user-role': 'employee',
-};
-
 export async function getMyTickets(): Promise<Ticket[]> {
-  const response = await fetch(`${apiUrl}/tickets`, { headers: employeeHeaders });
+  const response = await fetch(`${apiUrl}/tickets`, { headers: getAuthHeaders() });
 
   if (!response.ok) {
     const error = await response.json().catch(() => null);
@@ -40,7 +46,7 @@ export async function createTicket(input: CreateTicketInput): Promise<Ticket> {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      ...employeeHeaders,
+      ...getAuthHeaders(),
     },
     body: JSON.stringify(input),
   });

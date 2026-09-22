@@ -46,6 +46,32 @@ describe('Tickets API (e2e)', () => {
     return { 'x-user-id': id, 'x-user-role': role };
   }
 
+  it('creates a ticket and returns the structured AI result below the original request', async () => {
+    const createResponse = await request('/tickets', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...identity('employee-1', 'employee') },
+      body: JSON.stringify({
+        title: 'Laptop cannot connect to Wi-Fi',
+        description: 'The issue affects the office connection.',
+        teamId: 'it',
+        issueType: 'hardware',
+        project: 'internal',
+      }),
+    });
+    const created = (await createResponse.json()) as {
+      id: string;
+      status: TicketStatus;
+      aiResult: { employeeId: string; productName: string; issueType: string; severity: string; recommendedAction: string };
+    };
+
+    expect(createResponse.status).toBe(201);
+    expect(created.status).toBe(TicketStatus.PENDING_HELPDESK_REVIEW);
+    expect(created.aiResult).toMatchObject({ employeeId: 'employee-1', productName: 'Laptop cannot connect to Wi-Fi' });
+    expect(['hardware', 'software', 'network', 'access']).toContain(created.aiResult.issueType);
+    expect(['low', 'medium', 'high', 'urgent']).toContain(created.aiResult.severity);
+    expect(created.aiResult.recommendedAction).toEqual(expect.any(String));
+  });
+
   it('allows Helpdesk approval, denies employee approval, and rejects invalid input', async () => {
     const createResponse = await request('/tickets', {
       method: 'POST',

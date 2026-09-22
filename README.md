@@ -10,13 +10,21 @@ frontend/    React employee interface
 docs/        Product, architecture, and data-model decisions
 ```
 
-The first vertical slice is employee ticket creation:
+The current workflow is employee ticket creation with AI triage:
 
 ```text
-React form -> POST /api/tickets -> NestJS validation -> SQLite -> React result
+React form -> POST /api/tickets -> NestJS validation and authorization -> Requesty AI call -> backend validation -> SQLite -> AI result shown under the form
 ```
 
 ## Run Locally
+
+Create the runtime config file at `backend/.env` with the Requesty settings before starting the API:
+
+```text
+RQSTY_API_KEY=your_key_here
+RQSTY_API_URL=https://router.requesty.ai/v1/chat/completions
+RQSTY_MODEL=nvidia/nemotron-3-super-120b-a12b
+```
 
 Install dependencies once in each package:
 
@@ -34,38 +42,15 @@ npm run frontend
 
 The API runs at `http://localhost:3000/api` and the frontend runs at the Vite URL shown in the terminal. SQLite stores data in `backend/data/tickets.sqlite`.
 
-## Run Tests and Builds
-
-Run the business workflow regression tests:
-
-```text
-npm run backend:test
-```
-
-Run the real SQLite integration test:
-
-```text
-npm run backend:test:integration
-```
-
-Run the API E2E test, which verifies the allowed Helpdesk action, denied employee action, and invalid request:
-
-```text
-npm run backend:test:e2e
-```
-
-Build both applications:
-
-```text
-npm run backend:build
-npm run frontend:build
-```
-
-See [Week 3 full-stack delivery](docs/week3-full-stack-delivery.md) for the API contract, local identities, expected frontend failure, and test scenarios.
+See [Week 3 full-stack delivery](docs/week3-full-stack-delivery.md) for the original API contract, workflow tests, and build commands.
+See [Week 4 production AI integration](docs/week4-production-ai.md) for the Requesty integration, AI output validation, and the direct UI evaluation cases.
 
 ## What It Does
 
 - Allows every employee to submit requests with required details.
+- Calls a Requesty AI model during ticket submission to classify the issue and recommend an action.
+- Validates the AI response before saving it with the ticket.
+- Shows the structured AI result beneath the form for visibility.
 - Routes requests to the appropriate operational team based on project and issue type.
 - Lets Helpdesk review requests, set priorities, and approve or reject them.
 - Supports Helpdesk assignment, assignee claims, and progress updates.
@@ -90,4 +75,6 @@ This project is designed for internal staff and operational teams. External cust
 - [Product specification](docs/product_spec.md)
 - [Architecture](docs/architecture.md)
 - [Data model](docs/data-model.md)
+- [Week 3 full-stack delivery](docs/week3-full-stack-delivery.md)
+- [Week 4 production AI integration](docs/week4-production-ai.md)
 - [Architecture decision record](docs/decisions/ADR-001.md)

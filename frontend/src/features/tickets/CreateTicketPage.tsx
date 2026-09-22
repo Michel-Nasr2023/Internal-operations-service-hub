@@ -117,6 +117,21 @@ export function CreateTicketPage() {
           {error && <p className="message error" role="alert">{error}</p>}
           {createdTicket && <p className="message success" role="status">Ticket <strong>{createdTicket.id.slice(0, 8)}</strong> saved. Status: {createdTicket.status}.</p>}
 
+          {createdTicket?.aiResult && (
+            <section className="ai-result" aria-labelledby="ai-result-title">
+              <p className="eyebrow">AI STRUCTURED RESULT</p>
+              <h3 id="ai-result-title">Request interpreted successfully</h3>
+              <dl>
+                <div><dt>Employee ID</dt><dd>{createdTicket.aiResult.employeeId}</dd></div>
+                <div><dt>Job title</dt><dd>{createdTicket.aiResult.jobTitle}</dd></div>
+                <div><dt>Issue type</dt><dd>{createdTicket.aiResult.issueType}</dd></div>
+                <div><dt>Severity</dt><dd>{createdTicket.aiResult.severity}</dd></div>
+                <div><dt>Product</dt><dd>{createdTicket.aiResult.productName}</dd></div>
+                <div><dt>Recommended action</dt><dd>{createdTicket.aiResult.recommendedAction}</dd></div>
+              </dl>
+            </section>
+          )}
+
           <button type="submit" disabled={isSubmitting}>{isSubmitting ? 'Saving request...' : 'Submit request'} <span aria-hidden="true">↗</span></button>
         </form>
       </section>

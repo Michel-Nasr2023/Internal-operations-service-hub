@@ -22,6 +22,19 @@ export interface AuthenticatedUser {
   role: UserRole;
 }
 
+export type AiIssueType = 'hardware' | 'software' | 'network' | 'access';
+export type AiSeverity = 'low' | 'medium' | 'high' | 'urgent';
+
+export interface StructuredAiResult {
+  employeeId: string;
+  jobTitle: string;
+  freeText: string;
+  productName: string;
+  issueType: AiIssueType;
+  severity: AiSeverity;
+  recommendedAction: string;
+}
+
 export interface AuditEvent {
   id: string;
   action: string;
@@ -41,6 +54,7 @@ export interface Ticket {
   project: string;
   title: string;
   description: string;
+  aiResult?: StructuredAiResult;
   priority?: Priority;
   status: TicketStatus;
   assigneeId?: string;

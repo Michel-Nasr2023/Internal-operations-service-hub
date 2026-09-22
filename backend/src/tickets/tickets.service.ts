@@ -5,10 +5,14 @@ import { Repository } from 'typeorm';
 import { AssignTicketDto, CreateTicketDto, RejectTicketDto, SetPriorityDto } from './ticket.dto';
 import { TicketEntity } from './ticket.entity';
 import { AuthenticatedUser, AuditEvent, Priority, Ticket, TicketStatus } from './ticket.types';
+import { RqstyAiService } from '../ai/rqsty-ai.service';
 
 @Injectable()
 export class TicketsService {
-  constructor(@InjectRepository(TicketEntity) private readonly ticketRepository: Repository<TicketEntity>) {}
+  constructor(
+    @InjectRepository(TicketEntity) private readonly ticketRepository: Repository<TicketEntity>,
+    private readonly rqstyAiService: RqstyAiService,
+  ) {}
 
   async create(dto: CreateTicketDto, user: AuthenticatedUser): Promise<Ticket> {
     const now = new Date().toISOString();
@@ -20,6 +24,12 @@ export class TicketsService {
       project: dto.project,
       title: dto.title,
       description: dto.description,
+      aiResult: await this.rqstyAiService.generateStructuredResult({
+        employeeId: user.id,
+        jobTitle: 'Operations Employee',
+        productName: dto.title,
+        freeText: dto.description,
+      }),
       status: TicketStatus.PENDING_HELPDESK_REVIEW,
       createdAt: now,
       updatedAt: now,

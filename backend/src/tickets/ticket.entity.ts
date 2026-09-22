@@ -1,5 +1,5 @@
 import { Column, Entity, PrimaryColumn } from 'typeorm';
-import { AuditEvent, Priority, Ticket, TicketStatus } from './ticket.types';
+import { AuditEvent, Priority, StructuredAiResult, Ticket, TicketStatus } from './ticket.types';
 
 @Entity({ name: 'tickets' })
 export class TicketEntity implements Ticket {
@@ -23,6 +23,9 @@ export class TicketEntity implements Ticket {
 
   @Column('text')
   description!: string;
+
+  @Column({ type: 'simple-json', nullable: true })
+  aiResult?: StructuredAiResult;
 
   @Column({ type: 'text', nullable: true })
   priority?: Priority;

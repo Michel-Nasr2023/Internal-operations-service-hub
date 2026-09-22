@@ -16,6 +16,116 @@ body {
   min-width: 320px;
 }
 
+.auth-shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 2rem;
+  background: linear-gradient(135deg, #edf4ef, #dfe9f3);
+}
+
+.auth-card {
+  width: min(100%, 480px);
+  padding: clamp(1.5rem, 4vw, 3rem);
+  border: 1px solid rgba(255, 255, 255, .75);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, .85);
+  box-shadow: 0 20px 60px rgba(33, 52, 61, .12);
+}
+
+.auth-card h1 {
+  margin: 0;
+  font-size: clamp(2.2rem, 4vw, 3.2rem);
+  line-height: 1.05;
+}
+
+.auth-copy {
+  margin: 1rem 0 1.5rem;
+  color: #586772;
+  line-height: 1.6;
+}
+
+.auth-form {
+  display: grid;
+  gap: 1rem;
+}
+
+.demo-credentials {
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid #dfe5e7;
+  color: #3f5660;
+  font-size: .9rem;
+  line-height: 1.5;
+}
+
+.demo-credentials strong {
+  display: block;
+  margin-bottom: .4rem;
+}
+
+.dashboard-shell {
+  min-height: 100vh;
+  padding: 2rem;
+  background: linear-gradient(135deg, #eef4f1, #e4e8f4);
+}
+
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1.75rem;
+}
+
+.logout-button {
+  width: auto;
+  padding: .8rem 1rem;
+  border-radius: 999px;
+  background: #244b4e;
+}
+
+.dashboard-panel {
+  max-width: 720px;
+  padding: 1.5rem;
+  border: 1px solid rgba(255, 255, 255, .8);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, .7);
+  color: #263641;
+  line-height: 1.8;
+}
+
+.employee-layout {
+  display: grid;
+  gap: 2rem;
+}
+
+.ownership-panel {
+  width: min(100%, 720px);
+  padding: 1.5rem;
+  border: 1px solid rgba(255, 255, 255, .8);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, .75);
+  box-shadow: 0 16px 40px rgba(31, 52, 58, .1);
+}
+
+.ownership-panel h3 {
+  margin: 0 0 1rem;
+  font-size: 1.4rem;
+}
+
+.ownership-form {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 1rem;
+  align-items: end;
+}
+
+.ai-form {
+  display: grid;
+  gap: 1rem;
+}
+
 .page-shell {
   min-height: 100vh;
   display: grid;
