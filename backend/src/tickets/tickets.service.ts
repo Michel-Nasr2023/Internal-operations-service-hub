@@ -2,7 +2,7 @@ import { ConflictException, ForbiddenException, Injectable, NotFoundException } 
 import { InjectRepository } from '@nestjs/typeorm';
 import { randomUUID } from 'node:crypto';
 import { Repository } from 'typeorm';
-import { AssignTicketDto, CreateTicketDto, RejectTicketDto, SetPriorityDto } from './ticket.dto';
+import { AssignTicketDto, CreateTicketDto, RejectTicketDto, ResolveTicketDto, SetPriorityDto } from './ticket.dto';
 import { TicketEntity } from './ticket.entity';
 import { AuthenticatedUser, AuditEvent, Priority, Ticket, TicketStatus } from './ticket.types';
 import { RqstyAiService } from '../ai/rqsty-ai.service';
@@ -44,8 +44,7 @@ export class TicketsService {
   async list(user: AuthenticatedUser, priority?: Priority): Promise<Ticket[]> {
     const tickets = (await this.ticketRepository.find()).filter((ticket) => {
       if (user.role === 'helpdesk' || user.role === 'administrator') return true;
-      if (user.role === 'assignee') return ticket.assigneeId === user.id;
-      return ticket.requesterId === user.id;
+      return ticket.requesterId === user.id || ticket.assigneeId === user.id;
     });
 
     return priority ? tickets.filter((ticket) => ticket.priority === priority) : tickets;
@@ -101,7 +100,7 @@ export class TicketsService {
 
   async claim(id: string, user: AuthenticatedUser): Promise<Ticket> {
     const ticket = await this.get(id);
-    if (user.role !== 'assignee' && user.role !== 'administrator') {
+    if (user.role !== 'employee' && user.role !== 'assignee' && user.role !== 'administrator') {
       throw new ForbiddenException('Only the selected assignee can claim a ticket');
     }
     if (user.role !== 'administrator' && ticket.assigneeId !== user.id) {
@@ -115,9 +114,9 @@ export class TicketsService {
     return this.ticketRepository.save(ticket);
   }
 
-  async resolve(id: string, user: AuthenticatedUser): Promise<Ticket> {
+  async resolve(id: string, dto: ResolveTicketDto, user: AuthenticatedUser): Promise<Ticket> {
     const ticket = await this.get(id);
-    if (user.role !== 'assignee' && user.role !== 'administrator') {
+    if (user.role !== 'employee' && user.role !== 'assignee' && user.role !== 'administrator') {
       throw new ForbiddenException('Only the assignee can resolve a ticket');
     }
     if (user.role !== 'administrator' && ticket.assigneeId !== user.id) {
@@ -125,6 +124,7 @@ export class TicketsService {
     }
     this.assertStatus(ticket, TicketStatus.IN_PROGRESS);
     ticket.resolvedAt = new Date().toISOString();
+    ticket.resolutionFeedback = dto.feedback;
     this.transition(ticket, user.id, TicketStatus.RESOLVED, 'TICKET_RESOLVED');
     return this.ticketRepository.save(ticket);
   }

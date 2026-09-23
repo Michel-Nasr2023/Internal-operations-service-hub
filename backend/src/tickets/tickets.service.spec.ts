@@ -44,7 +44,7 @@ describe('TicketsService', () => {
     await service.approve(ticket.id, { priority: Priority.HIGH }, helpdesk);
     await service.assign(ticket.id, { assigneeId: assignee.id, expectedDurationHours: 8 }, helpdesk);
     await service.claim(ticket.id, assignee);
-    const resolved = await service.resolve(ticket.id, assignee);
+    const resolved = await service.resolve(ticket.id, { feedback: 'Reinstalled the driver and confirmed connectivity.' }, assignee);
 
     expect(resolved.status).toBe(TicketStatus.RESOLVED);
     expect(resolved.auditEvents).toHaveLength(5);
@@ -55,6 +55,6 @@ describe('TicketsService', () => {
     const employee = { id: 'employee-1', role: 'employee' as const };
     const ticket = await service.create({ title: 'Laptop issue', description: 'Cannot connect', teamId: 'it', issueType: 'hardware', project: 'internal' }, employee);
 
-    await expect(service.resolve(ticket.id, employee)).rejects.toThrow(ForbiddenException);
+    await expect(service.resolve(ticket.id, { feedback: 'Not applicable.' }, employee)).rejects.toThrow(ForbiddenException);
   });
 });

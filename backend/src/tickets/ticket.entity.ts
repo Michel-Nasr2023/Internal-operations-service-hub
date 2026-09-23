@@ -52,6 +52,9 @@ export class TicketEntity implements Ticket {
   resolvedAt?: string;
 
   @Column({ type: 'text', nullable: true })
+  resolutionFeedback?: string;
+
+  @Column({ type: 'text', nullable: true })
   rejectionReason?: string;
 
   @Column('text')

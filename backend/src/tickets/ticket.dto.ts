@@ -32,6 +32,13 @@ export class RejectTicketDto {
   reason!: string;
 }
 
+export class ResolveTicketDto {
+  @IsNotEmpty()
+  @IsString()
+  @MaxLength(2000)
+  feedback!: string;
+}
+
 export class SetPriorityDto {
   @IsEnum(Priority)
   priority!: Priority;

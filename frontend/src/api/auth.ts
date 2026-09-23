@@ -15,6 +15,23 @@ export interface LoginCredentials {
   password: string;
 }
 
+export interface SignupInput {
+  email: string;
+  password: string;
+  firstName: string;
+  lastName: string;
+  role: 'employee' | 'helpdesk';
+  jobTitle?: string;
+}
+
+export interface DirectoryUser {
+  id: string;
+  firstName: string;
+  lastName: string;
+  role: AuthRole;
+  jobTitle?: string;
+}
+
 const apiUrl = import.meta.env.VITE_API_URL ?? 'http://localhost:3000/api';
 const AUTH_STORAGE_KEY = 'internal-ops-user';
 
@@ -71,4 +88,30 @@ export async function loginUser(credentials: LoginCredentials): Promise<AuthUser
   }
 
   return response.json() as Promise<AuthUser>;
+}
+
+export async function signupUser(input: SignupInput): Promise<AuthUser> {
+  const response = await fetch(`${apiUrl}/auth/signup`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => null);
+    throw new Error(error?.message ?? 'Unable to create the account.');
+  }
+
+  return response.json() as Promise<AuthUser>;
+}
+
+export async function listAssignableEmployees(): Promise<DirectoryUser[]> {
+  const response = await fetch(`${apiUrl}/auth/users?role=employee`, { headers: getAuthHeaders() });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => null);
+    throw new Error(error?.message ?? 'The employee directory could not be loaded.');
+  }
+
+  return response.json() as Promise<DirectoryUser[]>;
 }

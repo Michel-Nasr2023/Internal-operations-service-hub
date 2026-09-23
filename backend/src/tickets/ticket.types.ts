@@ -63,6 +63,7 @@ export interface Ticket {
   claimedAt?: string;
   dueAt?: string;
   resolvedAt?: string;
+  resolutionFeedback?: string;
   rejectionReason?: string;
   createdAt: string;
   updatedAt: string;

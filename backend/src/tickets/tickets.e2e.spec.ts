@@ -7,6 +7,9 @@ import { TicketsModule } from './tickets.module';
 import { TicketEntity } from './ticket.entity';
 import { Priority, TicketStatus } from './ticket.types';
 
+// These tests call the real AI provider during ticket creation; allow extra time for network latency.
+jest.setTimeout(20000);
+
 describe('Tickets API (e2e)', () => {
   let app: INestApplication;
   let baseUrl: string;

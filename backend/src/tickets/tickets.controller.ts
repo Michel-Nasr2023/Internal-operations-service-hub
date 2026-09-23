@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { CurrentUser, requireRole } from './auth.decorator';
-import { AssignTicketDto, CreateTicketDto, RejectTicketDto, SetPriorityDto, TicketListQueryDto } from './ticket.dto';
+import { AssignTicketDto, CreateTicketDto, RejectTicketDto, ResolveTicketDto, SetPriorityDto, TicketListQueryDto } from './ticket.dto';
 import { AuthenticatedUser } from './ticket.types';
 import { TicketsService } from './tickets.service';
 
@@ -50,8 +50,8 @@ export class TicketsController {
   }
 
   @Post(':id/resolve')
-  resolve(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
-    return this.ticketsService.resolve(id, user);
+  resolve(@Param('id') id: string, @Body() dto: ResolveTicketDto, @CurrentUser() user: AuthenticatedUser) {
+    return this.ticketsService.resolve(id, dto, user);
   }
 
   @Get(':id/audit-events')
