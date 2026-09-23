@@ -82,6 +82,12 @@ export class RqstyAiService {
         throw new InternalServerErrorException(`RQSTY result is missing required fields: ${missing.join(', ')}`);
       }
 
+      const validIssueTypes: AiIssueType[] = ['hardware', 'software', 'network', 'access'];
+      const validSeverities: AiSeverity[] = ['low', 'medium', 'high', 'urgent'];
+      if (!validIssueTypes.includes(parsed.issueType as AiIssueType) || !validSeverities.includes(parsed.severity as AiSeverity)) {
+        throw new InternalServerErrorException('RQSTY result contains an invalid issue type or severity.');
+      }
+
       return {
         employeeId: input.employeeId,
         jobTitle: input.jobTitle,
