@@ -21,6 +21,10 @@ function statusSlug(status: string): string {
   return status.toLowerCase().replace(/\s+/g, '-');
 }
 
+function displayStatus(status: string): string {
+  return status === 'Pending Helpdesk Review' ? 'Pending' : status;
+}
+
 interface CreateTicketPageProps {
   externalOpenTicketId?: string | null;
   onExternalOpenHandled?: () => void;
@@ -174,7 +178,7 @@ export function CreateTicketPage({ externalOpenTicketId, onExternalOpenHandled }
               <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
                 <option value="all">All statuses</option>
                 {STATUS_OPTIONS.map((status) => (
-                  <option key={status} value={status}>{status}</option>
+                  <option key={status} value={status}>{displayStatus(status)}</option>
                 ))}
               </select>
             </label>
@@ -202,6 +206,7 @@ export function CreateTicketPage({ externalOpenTicketId, onExternalOpenHandled }
                     <th>Subject</th>
                     <th>Team</th>
                     <th>Type</th>
+                    <th>Project</th>
                     <th>Status</th>
                     <th>Submitted</th>
                     <th>Action</th>
@@ -214,7 +219,8 @@ export function CreateTicketPage({ externalOpenTicketId, onExternalOpenHandled }
                       <td>{ticket.title}</td>
                       <td>{TEAM_LABELS[ticket.teamId] ?? ticket.teamId}</td>
                       <td className="capitalize">{ticket.issueType}</td>
-                      <td><span className={`status-pill status-${statusSlug(ticket.status)}`}>{ticket.status}</span></td>
+                      <td>{ticket.project}</td>
+                      <td><span className={`status-pill status-${statusSlug(ticket.status)}`}>{displayStatus(ticket.status)}</span></td>
                       <td>{new Date(ticket.createdAt).toLocaleString()}</td>
                       <td>
                         <button
