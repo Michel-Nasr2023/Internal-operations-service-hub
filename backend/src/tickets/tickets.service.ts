@@ -253,6 +253,7 @@ export class TicketsService {
     const ids = [...new Set(tickets.flatMap((ticket) => [ticket.requesterId, ticket.assigneeId]).filter((id): id is string => !!id))];
     const users = ids.length > 0 ? await this.userRepository.findBy({ id: In(ids) }) : [];
     const names = new Map(users.map((user) => [user.id, fullName(user)]));
+    const avatars = new Map(users.map((user) => [user.id, user.avatarUpdatedAt ?? null]));
     const views = viewer ? await this.viewRepository.findBy({ userId: viewer.id }) : [];
     const viewedAt = new Map(views.map((view) => [view.ticketId, view.viewedAt]));
     const ticketIds = tickets.map((ticket) => ticket.id);
@@ -264,6 +265,8 @@ export class TicketsService {
       ...ticket,
       requesterName: names.get(ticket.requesterId),
       assigneeName: ticket.assigneeId ? names.get(ticket.assigneeId) : undefined,
+      requesterAvatarUpdatedAt: avatars.get(ticket.requesterId) ?? null,
+      assigneeAvatarUpdatedAt: ticket.assigneeId ? avatars.get(ticket.assigneeId) ?? null : null,
       viewedAt: viewer ? viewedAt.get(ticket.id) : undefined,
       attachmentCount: attachmentCounts.get(ticket.id) ?? 0,
     }));
@@ -324,7 +327,7 @@ export class TicketsService {
 
     return comments.map((comment) => {
       const author = byId.get(comment.authorId);
-      return { ...comment, authorName: author ? fullName(author) : undefined, authorRole: author?.role };
+      return { ...comment, authorName: author ? fullName(author) : undefined, authorRole: author?.role, authorAvatarUpdatedAt: author?.avatarUpdatedAt ?? null };
     });
   }
 

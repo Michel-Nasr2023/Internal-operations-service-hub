@@ -5,6 +5,7 @@ import { uploadAttachments } from '../../api/attachments';
 import { AttachmentPicker } from './AttachmentPicker';
 import { TicketAttachments } from './TicketAttachments';
 import { AttachmentCount } from './AttachmentCount';
+import { PersonChip } from '../profile/PersonChip';
 import { TicketComments } from './TicketComments';
 import { TicketHistory } from './TicketHistory';
 import { TicketResolutionNote } from './TicketResolutionNote';
@@ -289,7 +290,7 @@ export function AssignedTicketsPage({ userId, externalOpenTicketId, onExternalOp
             </div>
 
             <dl className="modal-meta">
-              <div><dt>Requester</dt><dd>{reviewTicket.requesterName ?? reviewTicket.requesterId}</dd></div>
+              <div><dt>Requester</dt><dd><PersonChip userId={reviewTicket.requesterId} name={reviewTicket.requesterName} avatarUpdatedAt={reviewTicket.requesterAvatarUpdatedAt} /></dd></div>
               <div><dt>Team</dt><dd>{TEAM_LABELS[reviewTicket.teamId] ?? reviewTicket.teamId}</dd></div>
               <div><dt>Type</dt><dd className="capitalize">{reviewTicket.issueType}</dd></div>
               <div><dt>Project</dt><dd>{reviewTicket.project}</dd></div>

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { DirectoryUser, listAssignableEmployees } from '../../api/auth';
 import { getTickets, Ticket } from '../../api/tickets';
+import { PersonChip } from '../profile/PersonChip';
 import { AssigneeWorkload, computeWorkload, HIGH_LOAD, isTicketOverdue, LOAD_LABELS, MODERATE_LOAD } from './workload';
 
 type WorkloadSort = 'most' | 'least' | 'name';
@@ -120,7 +121,7 @@ export function TeamWorkloadPage() {
               <tbody>
                 {visibleRows.map((row) => (
                   <tr key={row.employee.id}>
-                    <td>{row.employee.firstName} {row.employee.lastName}</td>
+                    <td><PersonChip userId={row.employee.id} name={`${row.employee.firstName} ${row.employee.lastName}`} avatarUpdatedAt={row.employee.avatarUpdatedAt} size={28} /></td>
                     <td>{row.employee.jobTitle ?? '—'}</td>
                     <td>{row.awaitingClaim}</td>
                     <td>{row.inProgress}</td>

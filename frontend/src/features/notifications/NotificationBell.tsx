@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { AppNotification, getNotifications, markAllNotificationsRead, markNotificationRead, NotificationKind } from '../../api/notifications';
-import { isSoundMuted, playNotificationChime, setSoundMuted } from './notificationSound';
+import { isSoundMuted, playNotificationChime, setSoundMuted, SOUND_PREFERENCE_EVENT } from './notificationSound';
 
 const POLL_INTERVAL_MS = 15000;
 
@@ -40,6 +40,12 @@ export function NotificationBell({ onSelectTicket }: NotificationBellProps) {
   const knownIds = useRef<Set<string> | null>(null);
   const isMutedRef = useRef(isMuted);
   isMutedRef.current = isMuted;
+
+  useEffect(() => {
+    const sync = () => setIsMuted(isSoundMuted());
+    window.addEventListener(SOUND_PREFERENCE_EVENT, sync);
+    return () => window.removeEventListener(SOUND_PREFERENCE_EVENT, sync);
+  }, []);
 
   useEffect(() => {
     async function poll() {

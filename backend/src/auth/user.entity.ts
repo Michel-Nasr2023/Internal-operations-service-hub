@@ -32,4 +32,19 @@ export class UserEntity {
 
   @Column('text')
   createdAt!: string;
+
+  // Profile photo: file name in avatar storage (a random ID), and when it last changed (used to refresh caches).
+  @Column({ type: 'text', nullable: true })
+  avatarKey?: string | null;
+
+  @Column({ type: 'text', nullable: true })
+  avatarUpdatedAt?: string | null;
+
+  @Column({ type: 'text', nullable: true })
+  passwordChangedAt?: string | null;
+
+  // Sessions (tokens) issued before this moment are no longer accepted: set on password change or reset,
+  // role change, disabling, or "sign out everywhere".
+  @Column({ type: 'text', nullable: true })
+  sessionsRevokedAt?: string | null;
 }

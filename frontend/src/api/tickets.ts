@@ -31,6 +31,8 @@ export interface Ticket {
   assigneeName?: string;
   // When the current user last opened this ticket's details.
   viewedAt?: string;
+  requesterAvatarUpdatedAt?: string | null;
+  assigneeAvatarUpdatedAt?: string | null;
   attachmentCount?: number;
   aiResult?: TicketAiAnalysis;
 }
@@ -192,6 +194,7 @@ export interface TicketComment {
   authorId: string;
   authorName?: string;
   authorRole?: 'employee' | 'helpdesk' | 'assignee' | 'administrator';
+  authorAvatarUpdatedAt?: string | null;
   body: string;
   createdAt: string;
 }

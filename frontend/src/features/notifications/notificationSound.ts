@@ -10,12 +10,16 @@ export function isSoundMuted(): boolean {
   }
 }
 
+export const SOUND_PREFERENCE_EVENT = 'internal-ops-sound-preference';
+
 export function setSoundMuted(muted: boolean): void {
   try {
     localStorage.setItem(MUTE_STORAGE_KEY, String(muted));
   } catch {
     // Preference just won't persist.
   }
+  // Lets every open control (bell, settings) show the same value.
+  window.dispatchEvent(new Event(SOUND_PREFERENCE_EVENT));
 }
 
 // Soft two-note chime synthesised with the Web Audio API, so no audio file is needed.

@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { addTicketComment, getTicketComments, Ticket, TicketComment } from '../../api/tickets';
+import { Avatar } from '../profile/Avatar';
 
 const ROLE_LABELS: Record<string, string> = {
   helpdesk: 'Helpdesk',
@@ -71,7 +72,16 @@ export function TicketComments({ ticket }: TicketCommentsProps) {
           {comments.map((comment) => (
             <li key={comment.id} className="comment-item">
               <div className="comment-meta">
-                <strong>{authorLabel(comment)}</strong>
+                <span className="comment-author">
+                  <Avatar
+                    userId={comment.authorId}
+                    firstName={(comment.authorName ?? comment.authorId).split(' ')[0]}
+                    lastName={(comment.authorName ?? '').split(' ').slice(1).join(' ')}
+                    avatarUpdatedAt={comment.authorAvatarUpdatedAt}
+                    size={26}
+                  />
+                  <strong>{authorLabel(comment)}</strong>
+                </span>
                 <small>{new Date(comment.createdAt).toLocaleString()}</small>
               </div>
               <p>{comment.body}</p>

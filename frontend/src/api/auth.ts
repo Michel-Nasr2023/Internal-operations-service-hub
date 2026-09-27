@@ -8,6 +8,8 @@ export interface AuthUser {
   lastName: string;
   jobTitle?: string;
   employeeId?: string;
+  // When the profile photo last changed; null or missing when there is none.
+  avatarUpdatedAt?: string | null;
   token: string;
 }
 
@@ -30,6 +32,7 @@ export interface DirectoryUser {
   lastName: string;
   role: AuthRole;
   jobTitle?: string;
+  avatarUpdatedAt?: string | null;
 }
 
 const apiUrl = import.meta.env.VITE_API_URL ?? 'http://localhost:3000/api';
@@ -77,10 +80,48 @@ export async function authFetch(url: string, init: RequestInit = {}): Promise<Re
 
   if (response.status === 401) {
     clearStoredUser();
-    window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT));
+    // Pass the server's reason (e.g. "This account has been disabled") to the sign-in screen.
+    const reason = await response
+      .clone()
+      .json()
+      .then((body: { message?: string }) => body?.message)
+      .catch(() => undefined);
+    window.dispatchEvent(new CustomEvent<string | undefined>(SESSION_EXPIRED_EVENT, { detail: reason }));
   }
 
   return response;
+}
+
+export async function requestPasswordReset(email: string): Promise<string> {
+  const response = await fetch(`${apiUrl}/auth/forgot-password`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email }),
+  });
+  const body = await response.json().catch(() => null);
+  if (!response.ok) throw new Error(body?.message ?? 'The request could not be sent.');
+  return body?.message ?? 'If an account exists for that email, a reset link has been sent.';
+}
+
+export async function checkResetLink(token: string): Promise<{ valid: boolean; purpose?: 'reset' | 'invite'; email?: string }> {
+  const response = await fetch(`${apiUrl}/auth/reset-password/check`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token }),
+  });
+  return response.ok ? response.json() : { valid: false };
+}
+
+export async function resetPassword(token: string, newPassword: string): Promise<void> {
+  const response = await fetch(`${apiUrl}/auth/reset-password`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token, newPassword }),
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => null);
+    throw new Error((Array.isArray(body?.message) ? body.message.join(' ') : body?.message) ?? 'Your password could not be set.');
+  }
 }
 
 export async function logoutUser(): Promise<void> {

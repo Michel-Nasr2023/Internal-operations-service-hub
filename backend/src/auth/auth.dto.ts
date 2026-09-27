@@ -35,3 +35,23 @@ export class SignupRequestDto {
   @MaxLength(120)
   jobTitle?: string;
 }
+
+export class ForgotPasswordDto {
+  @IsEmail()
+  @IsNotEmpty()
+  email!: string;
+}
+
+export class ResetTokenDto {
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(200)
+  token!: string;
+}
+
+export class ResetPasswordDto extends ResetTokenDto {
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(100)
+  newPassword!: string;
+}

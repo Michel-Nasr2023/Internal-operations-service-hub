@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { AuthUser, clearStoredUser, loadStoredUser, loginUser, logoutUser, saveStoredUser, SESSION_EXPIRED_EVENT } from './api/auth';
 import { CreateTicketPage } from './features/tickets/CreateTicketPage';
 import { AssignedTicketsPage } from './features/tickets/AssignedTicketsPage';
@@ -7,6 +7,14 @@ import { TeamWorkloadPage } from './features/helpdesk/TeamWorkloadPage';
 import { ActivityLogPage } from './features/helpdesk/ActivityLogPage';
 import { NotificationBell } from './features/notifications/NotificationBell';
 import { SignUpPage } from './features/auth/SignUpPage';
+import { ForgotPasswordPage } from './features/auth/ForgotPasswordPage';
+import { ResetPasswordPage } from './features/auth/ResetPasswordPage';
+import { AdminOverviewPage } from './features/admin/AdminOverviewPage';
+import { AdminUsersPage } from './features/admin/AdminUsersPage';
+import { AdminSystemPage } from './features/admin/AdminSystemPage';
+import { ProfileMenu, SettingsTab } from './features/profile/ProfileMenu';
+import { ProfileSettingsModal } from './features/profile/ProfileSettingsModal';
+import { getProfile } from './api/profile';
 import { getMyTickets } from './api/tickets';
 import { NotificationKind } from './api/notifications';
 
@@ -15,6 +23,9 @@ interface LoginFormState {
   password: string;
 }
 
+type AuthView = 'login' | 'signup' | 'forgot' | 'reset';
+type StaffTab = 'overview' | 'queue' | 'workload' | 'users' | 'activity' | 'system';
+
 const ORGANIZATION_NAME = 'Internal Operations Service Hub';
 
 const initialForm: LoginFormState = {
@@ -22,28 +33,65 @@ const initialForm: LoginFormState = {
   password: 'employee123',
 };
 
+// Password reset and invitation emails link to `/?reset=<token>`.
+function readResetToken(): string | null {
+  return new URLSearchParams(window.location.search).get('reset');
+}
+
+function clearResetToken(): void {
+  const url = new URL(window.location.href);
+  url.searchParams.delete('reset');
+  window.history.replaceState(null, '', url.pathname + url.search + url.hash);
+}
+
+const HELPDESK_TABS: Array<{ id: StaffTab; label: string }> = [
+  { id: 'queue', label: 'Tickets queue' },
+  { id: 'workload', label: 'Team workload' },
+  { id: 'activity', label: 'Activity log' },
+];
+
+const ADMIN_TABS: Array<{ id: StaffTab; label: string }> = [
+  { id: 'overview', label: 'Overview' },
+  { id: 'queue', label: 'Tickets queue' },
+  { id: 'workload', label: 'Team workload' },
+  { id: 'users', label: 'Users' },
+  { id: 'activity', label: 'Activity log' },
+  { id: 'system', label: 'System' },
+];
+
 export function App() {
-  const [user, setUser] = useState<AuthUser | null>(() => loadStoredUser());
-  const [authView, setAuthView] = useState<'login' | 'signup'>('login');
+  const [resetToken, setResetToken] = useState<string | null>(() => readResetToken());
+  const [user, setUser] = useState<AuthUser | null>(() => (readResetToken() ? null : loadStoredUser()));
+  const [authView, setAuthView] = useState<AuthView>(() => (readResetToken() ? 'reset' : 'login'));
   const [employeeTab, setEmployeeTab] = useState<'requests' | 'tasks'>('requests');
-  const [helpdeskTab, setHelpdeskTab] = useState<'queue' | 'workload' | 'activity'>('queue');
+  const [staffTab, setStaffTab] = useState<StaffTab>(() => (loadStoredUser()?.role === 'administrator' ? 'overview' : 'queue'));
   const [pendingTicketId, setPendingTicketId] = useState<string | null>(null);
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
+  const [settingsTab, setSettingsTab] = useState<SettingsTab | null>(null);
   const [form, setForm] = useState<LoginFormState>(initialForm);
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
-    function handleSessionExpired() {
+    function handleSessionExpired(event: Event) {
+      const reason = (event as CustomEvent<string | undefined>).detail;
       setUser(null);
       setAuthView('login');
       setIsLogoutModalOpen(false);
-      setError('Your session has expired. Please sign in again.');
+      setSettingsTab(null);
+      setError(reason && reason !== 'A valid sign-in session is required' ? reason : 'Your session has expired. Please sign in again.');
     }
 
     window.addEventListener(SESSION_EXPIRED_EVENT, handleSessionExpired);
     return () => window.removeEventListener(SESSION_EXPIRED_EVENT, handleSessionExpired);
   }, []);
+
+  function signIn(signedIn: AuthUser) {
+    saveStoredUser(signedIn);
+    setUser(signedIn);
+    setStaffTab(signedIn.role === 'administrator' ? 'overview' : 'queue');
+    setEmployeeTab('requests');
+  }
 
   async function handleLogin(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -51,9 +99,7 @@ export function App() {
     setIsSubmitting(true);
 
     try {
-      const loggedInUser = await loginUser(form);
-      saveStoredUser(loggedInUser);
-      setUser(loggedInUser);
+      signIn(await loginUser(form));
     } catch (loginError) {
       setError(loginError instanceof Error ? loginError.message : 'Login failed.');
     } finally {
@@ -65,13 +111,41 @@ export function App() {
     setIsLogoutModalOpen(true);
   }
 
+  // Profile changes update the top bar straight away and the stored session, so they survive a refresh.
+  const handleUserUpdated = useCallback((changes: Partial<AuthUser>) => {
+    setUser((current) => {
+      if (!current) return current;
+      const updated = { ...current, ...changes };
+      saveStoredUser(updated);
+      return updated;
+    });
+  }, []);
+
+  // Once per sign-in, pick up profile changes made elsewhere (e.g. a new photo uploaded on another device).
+  const signedInUserId = user?.id;
+  useEffect(() => {
+    if (!signedInUserId) return;
+    getProfile()
+      .then((profile) =>
+        handleUserUpdated({ firstName: profile.firstName, lastName: profile.lastName, jobTitle: profile.jobTitle, avatarUpdatedAt: profile.avatarUpdatedAt }),
+      )
+      .catch(() => undefined);
+  }, [signedInUserId, handleUserUpdated]);
+
   function confirmLogout() {
+    setSettingsTab(null);
     // Sent before the session is cleared so the sign-out is attributed to this user in the audit log.
     void logoutUser();
     clearStoredUser();
     setUser(null);
     setAuthView('login');
     setIsLogoutModalOpen(false);
+  }
+
+  function leaveResetFlow(nextView: AuthView) {
+    clearResetToken();
+    setResetToken(null);
+    setAuthView(nextView);
   }
 
   // Assignment notifications, and comments on tickets assigned to this employee, open My tasks;
@@ -86,11 +160,9 @@ export function App() {
     setPendingTicketId(ticketId);
   }
 
-  function handleSignedUp(signedUpUser: AuthUser) {
-    saveStoredUser(signedUpUser);
-    setUser(signedUpUser);
-    setAuthView('login');
-  }
+  const settingsModal = user && settingsTab && (
+    <ProfileSettingsModal user={user} initialTab={settingsTab} onClose={() => setSettingsTab(null)} onUserUpdated={handleUserUpdated} />
+  );
 
   const logoutModal = isLogoutModalOpen && (
     <div className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="logout-modal-title" onClick={() => setIsLogoutModalOpen(false)}>
@@ -107,8 +179,16 @@ export function App() {
     </div>
   );
 
+  if (!user && authView === 'reset' && resetToken) {
+    return <ResetPasswordPage token={resetToken} onDone={() => leaveResetFlow('login')} onRequestNewLink={() => leaveResetFlow('forgot')} />;
+  }
+
+  if (!user && authView === 'forgot') {
+    return <ForgotPasswordPage initialEmail={form.email} onBackToLogin={() => setAuthView('login')} />;
+  }
+
   if (!user && authView === 'signup') {
-    return <SignUpPage onSignedUp={handleSignedUp} onBackToLogin={() => setAuthView('login')} />;
+    return <SignUpPage onSignedUp={(signedUp) => { signIn(signedUp); setAuthView('login'); }} onBackToLogin={() => setAuthView('login')} />;
   }
 
   if (!user) {
@@ -131,17 +211,22 @@ export function App() {
                 value={form.email}
                 onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))}
                 placeholder="employee@company.com"
+                autoComplete="email"
                 required
               />
             </label>
 
             <label>
-              Password
+              <span className="label-row">
+                Password
+                <button type="button" className="link-button forgot-link" onClick={() => { setError(''); setAuthView('forgot'); }}>Forgot password?</button>
+              </span>
               <input
                 type="password"
                 value={form.password}
                 onChange={(event) => setForm((current) => ({ ...current, password: event.target.value }))}
                 placeholder="Enter password"
+                autoComplete="current-password"
                 required
               />
             </label>
@@ -155,6 +240,7 @@ export function App() {
             <p className="credentials-title">Development accounts</p>
             <p><strong>Employee</strong><br />employee@company.com<br />employee123</p>
             <p><strong>Helpdesk</strong><br />helpdesk@company.com<br />helpdesk123</p>
+            <p><strong>Administrator</strong><br />admin@company.com<br />Admin12345</p>
           </div>
 
           <p className="auth-switch">
@@ -165,7 +251,11 @@ export function App() {
     );
   }
 
-  if (user.role === 'helpdesk') {
+  if (user.role === 'helpdesk' || user.role === 'administrator') {
+    const isAdmin = user.role === 'administrator';
+    const tabs = isAdmin ? ADMIN_TABS : HELPDESK_TABS;
+    const activeTab = tabs.some((tab) => tab.id === staffTab) ? staffTab : tabs[0].id;
+
     return (
       <main className="dashboard-shell">
         <header className="topbar">
@@ -173,31 +263,38 @@ export function App() {
             <span className="brand-mark">OPS</span>
             <div>
               <span className="brand-name">{ORGANIZATION_NAME}</span>
-              <p className="eyebrow">HELPDESK QUEUE</p>
+              <p className="eyebrow">{isAdmin ? 'ADMINISTRATION' : 'HELPDESK QUEUE'}</p>
             </div>
           </div>
           <div className="topbar-actions">
-            <NotificationBell onSelectTicket={(ticketId) => { setHelpdeskTab('queue'); setPendingTicketId(ticketId); }} />
-            <span className="user-chip">{user.firstName} {user.lastName} · Helpdesk</span>
-            <button type="button" className="logout-button" onClick={handleLogout}>Log out</button>
+            <NotificationBell onSelectTicket={(ticketId) => { setStaffTab('queue'); setPendingTicketId(ticketId); }} />
+            <ProfileMenu user={user} onOpenSettings={setSettingsTab} onLogout={handleLogout} />
           </div>
         </header>
 
-        <nav className="tab-switch">
-          <button type="button" className={helpdeskTab === 'queue' ? 'tab-button tab-button-active' : 'tab-button'} onClick={() => setHelpdeskTab('queue')}>Tickets queue</button>
-          <button type="button" className={helpdeskTab === 'workload' ? 'tab-button tab-button-active' : 'tab-button'} onClick={() => setHelpdeskTab('workload')}>Team workload</button>
-          <button type="button" className={helpdeskTab === 'activity' ? 'tab-button tab-button-active' : 'tab-button'} onClick={() => setHelpdeskTab('activity')}>Activity log</button>
+        <nav className="tab-switch" aria-label="Sections">
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              className={activeTab === tab.id ? 'tab-button tab-button-active' : 'tab-button'}
+              aria-current={activeTab === tab.id ? 'page' : undefined}
+              onClick={() => setStaffTab(tab.id)}
+            >
+              {tab.label}
+            </button>
+          ))}
         </nav>
 
         <div className="employee-layout">
-          {helpdeskTab === 'queue' ? (
-            <HelpdeskDashboardPage externalOpenTicketId={pendingTicketId} onExternalOpenHandled={() => setPendingTicketId(null)} />
-          ) : helpdeskTab === 'workload' ? (
-            <TeamWorkloadPage />
-          ) : (
-            <ActivityLogPage />
-          )}
+          {activeTab === 'overview' && <AdminOverviewPage onOpenTab={setStaffTab} />}
+          {activeTab === 'queue' && <HelpdeskDashboardPage externalOpenTicketId={pendingTicketId} onExternalOpenHandled={() => setPendingTicketId(null)} />}
+          {activeTab === 'workload' && <TeamWorkloadPage />}
+          {activeTab === 'users' && <AdminUsersPage currentUserId={user.id} />}
+          {activeTab === 'activity' && <ActivityLogPage />}
+          {activeTab === 'system' && <AdminSystemPage />}
         </div>
+        {settingsModal}
         {logoutModal}
       </main>
     );
@@ -215,8 +312,7 @@ export function App() {
         </div>
         <div className="topbar-actions">
           <NotificationBell onSelectTicket={(ticketId, kind) => void openEmployeeTicket(ticketId, kind)} />
-          <span className="user-chip">{user.firstName} {user.lastName} · {user.jobTitle ?? 'Employee'}</span>
-          <button type="button" className="logout-button" onClick={handleLogout}>Log out</button>
+          <ProfileMenu user={user} onOpenSettings={setSettingsTab} onLogout={handleLogout} />
         </div>
       </header>
 
@@ -232,6 +328,7 @@ export function App() {
           <AssignedTicketsPage userId={user.id} externalOpenTicketId={pendingTicketId} onExternalOpenHandled={() => setPendingTicketId(null)} />
         )}
       </div>
+      {settingsModal}
       {logoutModal}
     </main>
   );

@@ -47,13 +47,29 @@ The API runs at `http://localhost:3000/api` and the frontend runs at the Vite UR
 
 ### Accounts and roles
 
-Public sign-up always creates an **Employee** account. To give someone Helpdesk access, have them sign up first, then run from the project root:
+Public sign-up always creates an **Employee** account. Administrators manage everyone else from **Admin > Users**: create accounts (the person gets an invitation email to set their own password), change roles, disable or re-enable accounts, send password reset links, and sign someone out of every session. Role changes and disabling take effect immediately.
+
+Default accounts created on first start:
+
+| Role | Email | Password |
+| --- | --- | --- |
+| Employee | employee@company.com | employee123 |
+| Helpdesk | helpdesk@company.com | helpdesk123 |
+| Administrator | admin@company.com | Admin12345 |
+
+The administrator account is also created on an existing database that has none. Change these passwords before real use.
+
+A role can also be changed from the command line (start the API once first so the database is up to date):
 
 ```text
 npm run user:role -- jane.doe@company.com helpdesk
 ```
 
-Use `employee` instead of `helpdesk` to remove the access. The person must sign out and back in for the change to apply. A default Helpdesk account (`helpdesk@company.com`) is seeded on first start.
+Roles: `employee`, `helpdesk`, `administrator`. The person is signed out and gets the new role at their next sign-in.
+
+### Email
+
+Password reset and invitation emails are stored in an outbox (visible in **Admin > System**) and printed in the API console, because no mail provider is connected yet. Links point to `APP_URL` (default `http://localhost:5173`). To send real email, implement delivery in `backend/src/mail/mail.service.ts`.
 
 See [Week 3 full-stack delivery](docs/week3-full-stack-delivery.md) for the original API contract, workflow tests, and build commands.
 See [Week 4 production AI integration](docs/week4-production-ai.md) for the Requesty integration, AI output validation, and the direct UI evaluation cases.

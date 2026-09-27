@@ -68,7 +68,7 @@ export function SignUpPage({ onSignedUp, onBackToLogin }: SignUpPageProps) {
 
           <label>
             Password
-            <input type="password" value={form.password} onChange={(event) => updateField('password', event.target.value)} placeholder="Choose a password" required />
+            <input type="password" value={form.password} onChange={(event) => updateField('password', event.target.value)} placeholder="At least 8 characters, letters and numbers" minLength={8} autoComplete="new-password" required />
           </label>
 
           <label>

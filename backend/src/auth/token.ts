@@ -16,15 +16,20 @@ interface TokenPayload {
   sub: string;
   role: UserRole;
   exp: number;
+  // Issued-at in milliseconds.
+  iat?: number;
 }
 
+export type VerifiedToken = AuthenticatedUser & { issuedAt: number };
+
 export function signToken(user: AuthenticatedUser): string {
-  const payload: TokenPayload = { sub: user.id, role: user.role, exp: Math.floor(Date.now() / 1000) + TOKEN_TTL_SECONDS };
+  const now = Date.now();
+  const payload: TokenPayload = { sub: user.id, role: user.role, exp: Math.floor(now / 1000) + TOKEN_TTL_SECONDS, iat: now };
   const encoded = Buffer.from(JSON.stringify(payload)).toString('base64url');
   return `${encoded}.${sign(encoded)}`;
 }
 
-export function verifyToken(token: string): AuthenticatedUser | null {
+export function verifyToken(token: string): VerifiedToken | null {
   const [encoded, signature] = token.split('.');
   if (!encoded || !signature) return null;
 
@@ -42,7 +47,7 @@ export function verifyToken(token: string): AuthenticatedUser | null {
   if (typeof payload.sub !== 'string' || !ALLOWED_ROLES.includes(payload.role)) return null;
   if (typeof payload.exp !== 'number' || payload.exp < Math.floor(Date.now() / 1000)) return null;
 
-  return { id: payload.sub, role: payload.role };
+  return { id: payload.sub, role: payload.role, issuedAt: typeof payload.iat === 'number' ? payload.iat : 0 };
 }
 
 function sign(data: string): string {

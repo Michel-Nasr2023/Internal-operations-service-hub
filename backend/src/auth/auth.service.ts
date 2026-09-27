@@ -1,8 +1,9 @@
-import { ConflictException, Injectable, OnModuleInit, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, OnModuleInit, UnauthorizedException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { AuthenticatedUser, UserRole } from '../tickets/ticket.types';
 import { LoginRequestDto, SignupRequestDto } from './auth.dto';
+import { passwordProblem } from './password-policy';
 import { hashPassword, isHashedPassword, verifyPassword } from './password';
 import { signToken } from './token';
 import { UserEntity } from './user.entity';
@@ -14,6 +15,7 @@ export type AuthenticatedSession = AuthenticatedUser & {
   lastName: string;
   jobTitle?: string;
   employeeId?: string;
+  avatarUpdatedAt?: string | null;
   token: string;
 };
 
@@ -23,6 +25,7 @@ export interface DirectoryUser {
   lastName: string;
   role: UserRole;
   jobTitle?: string;
+  avatarUpdatedAt?: string | null;
 }
 
 @Injectable()
@@ -34,6 +37,26 @@ export class AuthService implements OnModuleInit {
 
   async onModuleInit(): Promise<void> {
     await this.seedDefaultUsers();
+    await this.ensureAdministrator();
+  }
+
+  // Guarantees there is always a way into the admin area, including on databases created before it existed.
+  private async ensureAdministrator(): Promise<void> {
+    if ((await this.userRepository.count({ where: { role: 'administrator' } })) > 0) return;
+    if (await this.userRepository.findOneBy({ email: 'admin@company.com' })) return;
+
+    await this.userRepository.save({
+      id: 'admin-1',
+      email: 'admin@company.com',
+      password: hashPassword('Admin12345'),
+      role: 'administrator',
+      firstName: 'Ada',
+      lastName: 'Admin',
+      jobTitle: 'System Administrator',
+      employeeId: 'ADM-0001',
+      status: 'active',
+      createdAt: new Date().toISOString(),
+    });
   }
 
   async login(dto: LoginRequestDto): Promise<AuthenticatedSession> {
@@ -91,6 +114,9 @@ export class AuthService implements OnModuleInit {
     const normalizedEmail = dto.email.trim().toLowerCase();
     const existing = await this.userRepository.findOne({ where: { email: normalizedEmail } });
 
+    const weakness = passwordProblem(dto.password);
+    if (weakness) throw new BadRequestException(weakness);
+
     if (existing) {
       await this.auditService.record({
         category: 'auth',
@@ -102,7 +128,7 @@ export class AuthService implements OnModuleInit {
       throw new ConflictException('An account with this email already exists');
     }
 
-    const id = await this.nextSequentialId();
+    const id = await this.nextUserId();
     const now = new Date().toISOString();
 
     const user = await this.userRepository.save({
@@ -129,8 +155,9 @@ export class AuthService implements OnModuleInit {
     return this.toSession(user);
   }
 
+  // Active people only: disabled accounts cannot be assigned work.
   async listUsers(role?: UserRole): Promise<DirectoryUser[]> {
-    const users = role ? await this.userRepository.find({ where: { role } }) : await this.userRepository.find();
+    const users = await this.userRepository.find({ where: { status: 'active', ...(role ? { role } : {}) } });
 
     return users.map((user) => ({
       id: user.id,
@@ -138,6 +165,7 @@ export class AuthService implements OnModuleInit {
       lastName: user.lastName,
       role: user.role,
       jobTitle: user.jobTitle,
+      avatarUpdatedAt: user.avatarUpdatedAt ?? null,
     }));
   }
 
@@ -150,11 +178,13 @@ export class AuthService implements OnModuleInit {
       lastName: user.lastName,
       jobTitle: user.jobTitle,
       employeeId: user.employeeId,
+      avatarUpdatedAt: user.avatarUpdatedAt ?? null,
       token: signToken({ id: user.id, role: user.role }),
     };
   }
 
-  private async nextSequentialId(): Promise<string> {
+  // Next free numeric account ID; also used when administrators create accounts.
+  async nextUserId(): Promise<string> {
     const users = await this.userRepository.find();
     const highestNumericId = users.reduce((highest, user) => {
       const parsed = Number(user.id);

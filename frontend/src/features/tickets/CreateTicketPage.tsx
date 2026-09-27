@@ -4,6 +4,7 @@ import { uploadAttachments } from '../../api/attachments';
 import { AttachmentPicker } from './AttachmentPicker';
 import { TicketAttachments } from './TicketAttachments';
 import { AttachmentCount } from './AttachmentCount';
+import { PersonChip } from '../profile/PersonChip';
 import { TicketComments } from './TicketComments';
 import { TicketHistory } from './TicketHistory';
 import { TicketResolutionNote } from './TicketResolutionNote';
@@ -296,7 +297,7 @@ export function CreateTicketPage({ userId, externalOpenTicketId, onExternalOpenH
                   <p>Awaiting Helpdesk review.</p>
                 ) : reviewTicket.assigneeId ? (
                   <p>
-                    Assigned to <strong>{reviewTicket.assigneeName ?? reviewTicket.assigneeId}</strong>
+                    Assigned to <PersonChip userId={reviewTicket.assigneeId} name={reviewTicket.assigneeName} avatarUpdatedAt={reviewTicket.assigneeAvatarUpdatedAt} bold />
                     {reviewTicket.expectedDurationHours ? ` \u00b7 Expected duration: ${reviewTicket.expectedDurationHours}h` : ''}
                     {reviewTicket.assignedAt ? ` \u00b7 Assigned on ${new Date(reviewTicket.assignedAt).toLocaleString()}` : ''}
                   </p>

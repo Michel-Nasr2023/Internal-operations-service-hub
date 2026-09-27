@@ -3,6 +3,7 @@ import { approveTicket, assignTicket, getTickets, markTicketViewed, rejectTicket
 import { DirectoryUser, listAssignableEmployees } from '../../api/auth';
 import { TicketAiAnalysisPanel } from './TicketAiAnalysisPanel';
 import { TicketAttachments } from '../tickets/TicketAttachments';
+import { PersonChip } from '../profile/PersonChip';
 import { AttachmentCount } from '../tickets/AttachmentCount';
 import { TicketComments } from '../tickets/TicketComments';
 import { TicketHistory } from '../tickets/TicketHistory';
@@ -360,7 +361,7 @@ export function HelpdeskDashboardPage({ externalOpenTicketId, onExternalOpenHand
                       <AttachmentCount count={ticket.attachmentCount} />
                     </td>
                     <td className="description-cell" title={ticket.aiResult?.clarifiedDescription ?? ticket.description}>{ticket.aiResult?.clarifiedDescription ?? ticket.description}</td>
-                    <td>{ticket.requesterName ?? ticket.requesterId}</td>
+                    <td><PersonChip userId={ticket.requesterId} name={ticket.requesterName} avatarUpdatedAt={ticket.requesterAvatarUpdatedAt} /></td>
                     <td>{TEAM_LABELS[ticket.teamId] ?? ticket.teamId}</td>
                     <td className="capitalize">{ticket.issueType}</td>
                     <td>{ticket.project}</td>
@@ -393,13 +394,13 @@ export function HelpdeskDashboardPage({ externalOpenTicketId, onExternalOpenHand
             </div>
 
             <dl className="modal-meta">
-              <div><dt>Requester</dt><dd>{reviewTicket.requesterName ?? reviewTicket.requesterId}</dd></div>
+              <div><dt>Requester</dt><dd><PersonChip userId={reviewTicket.requesterId} name={reviewTicket.requesterName} avatarUpdatedAt={reviewTicket.requesterAvatarUpdatedAt} /></dd></div>
               <div><dt>Team</dt><dd>{TEAM_LABELS[reviewTicket.teamId] ?? reviewTicket.teamId}</dd></div>
               <div><dt>Type</dt><dd className="capitalize">{reviewTicket.issueType}</dd></div>
               <div><dt>Status</dt><dd><span className={`status-pill status-${statusSlug(reviewTicket.status)}`}>{reviewTicket.status}</span></dd></div>
               <div><dt>Priority</dt><dd className="capitalize">{reviewTicket.priority ?? '—'}</dd></div>
               <div><dt>Submitted</dt><dd>{new Date(reviewTicket.createdAt).toLocaleString()}</dd></div>
-              {reviewTicket.assigneeId && <div><dt>Assignee</dt><dd>{reviewTicket.assigneeName ?? reviewTicket.assigneeId}</dd></div>}
+              {reviewTicket.assigneeId && <div><dt>Assignee</dt><dd><PersonChip userId={reviewTicket.assigneeId} name={reviewTicket.assigneeName} avatarUpdatedAt={reviewTicket.assigneeAvatarUpdatedAt} /></dd></div>}
               {reviewTicket.dueAt && <div><dt>Due</dt><dd>{new Date(reviewTicket.dueAt).toLocaleString()}{isOverdue(reviewTicket, now) ? ' · Overdue' : ''}</dd></div>}
             </dl>
 

@@ -8,6 +8,8 @@ import { verifyToken } from './token';
 import { DataSource } from 'typeorm';
 import { AuditLogEntity } from '../audit/audit-log.entity';
 import { TicketEntity } from '../tickets/ticket.entity';
+import { PasswordResetTokenEntity } from './password-reset-token.entity';
+import { OutboxEmailEntity } from '../mail/outbox-email.entity';
 
 describe('Auth API (e2e)', () => {
   let app: INestApplication;
@@ -19,7 +21,7 @@ describe('Auth API (e2e)', () => {
         TypeOrmModule.forRoot({
           type: 'sqlite',
           database: ':memory:',
-          entities: [UserEntity, AuditLogEntity, TicketEntity],
+          entities: [UserEntity, AuditLogEntity, TicketEntity, PasswordResetTokenEntity, OutboxEmailEntity],
           synchronize: true,
         }),
         AuthModule,
@@ -77,7 +79,7 @@ describe('Auth API (e2e)', () => {
 
     expect(stored.password).not.toBe('helpdesk123');
     expect(stored.password.startsWith('scrypt$')).toBe(true);
-    expect(verifyToken(session.token)).toEqual({ id: 'helpdesk-1', role: 'helpdesk' });
+    expect(verifyToken(session.token)).toMatchObject({ id: 'helpdesk-1', role: 'helpdesk', issuedAt: expect.any(Number) });
 
     const wrongPassword = await fetch(`${baseUrl}/auth/login`, {
       method: 'POST',

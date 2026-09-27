@@ -24,6 +24,9 @@ The user ID and role are read from the token, which is HMAC-signed with `AUTH_SE
 ```text
 POST   /api/auth/login
 POST   /api/auth/signup
+POST   /api/auth/forgot-password           ({ email }; always the same reply)
+POST   /api/auth/reset-password/check      ({ token } -> { valid, purpose, email (masked) })
+POST   /api/auth/reset-password            ({ token, newPassword })
 POST   /api/auth/logout                  (records the sign-out in the audit log)
 GET    /api/auth/users          (Helpdesk only)
 POST   /api/tickets
@@ -98,3 +101,45 @@ Attachments are optional. The requester can attach files to their ticket while i
 - Allowed types: png, jpg, jpeg, gif, webp, pdf, txt, log, csv, docx, xlsx. A file's first bytes must match its extension, so a renamed executable or script is refused. An upload is all-or-nothing.
 - File bytes are stored on disk under a random ID in `backend/data/attachments/` (override with `ATTACHMENTS_DIR`); only metadata is stored in SQLite. Downloads are always served as file downloads with `X-Content-Type-Options: nosniff`.
 - Each upload adds an `ATTACHMENTS_ADDED` entry to the ticket history and the audit log.
+
+## Profile
+
+Every route acts on the signed-in user only; role and email cannot be changed here.
+
+```text
+GET    /api/profile
+PATCH  /api/profile                      ({ firstName, lastName, jobTitle }; empty jobTitle clears it)
+POST   /api/profile/password             ({ currentPassword, newPassword })
+POST   /api/profile/avatar               (multipart/form-data, field "avatar")
+DELETE /api/profile/avatar
+GET    /api/users/:id/avatar             (any signed-in user; served inline as an image)
+```
+
+- Passwords (sign-up and changes) need at least 8 characters with letters and numbers. A change requires the current password and must differ from it.
+- Profile photos: PNG, JPG or WebP, up to 2 MB, checked by content like attachments, stored in `backend/data/avatars/` (override with `AVATARS_DIR`). The old file is deleted when a photo is replaced or removed.
+- Audit log entries: `PROFILE_UPDATED`, `PASSWORD_CHANGED`, `PASSWORD_CHANGE_FAILED` (with the reason, never the password), `AVATAR_UPDATED`, `AVATAR_REMOVED`.
+
+## Sessions
+
+Every request with a session token is checked against the account: the account must still exist and be active, its role must match the token, and the token must have been issued after the account's `sessionsRevokedAt`. Otherwise the API answers `401` with the reason. Sessions are revoked when a password is changed or reset, when an administrator changes a role or disables an account, and on "sign out everywhere". Changing your own password returns a new token for the current session.
+
+## Password reset
+
+`forgot-password` emails a single-use link (`APP_URL/?reset=<token>`) that expires after 30 minutes; earlier unused links are cancelled. At most 3 are sent per account per hour, and the reply never reveals whether the email has an account. Only a SHA-256 hash of the token is stored. Invitations from administrators use the same mechanism with a 72-hour link. Audit actions: `PASSWORD_RESET_REQUESTED`, `PASSWORD_RESET_COMPLETED`, `PASSWORD_RESET_FAILED`, `USER_INVITED`, `INVITE_ACCEPTED`.
+
+## Administration
+
+Administrators only (`403` for everyone else). Administrators can also use every Helpdesk endpoint.
+
+```text
+GET    /api/admin/overview
+GET    /api/admin/users                      (?search=&role=&status=)
+POST   /api/admin/users                      ({ email, firstName, lastName, jobTitle?, role }; sends an invitation)
+PATCH  /api/admin/users/:id                  ({ email?, firstName?, lastName?, jobTitle?, role?, status? })
+POST   /api/admin/users/:id/password-reset
+POST   /api/admin/users/:id/sign-out
+GET    /api/admin/email-outbox
+GET    /api/admin/system
+```
+
+Safeguards: administrators cannot change their own role or disable themselves, and at least one active administrator must remain. Audit actions: `USER_CREATED`, `USER_UPDATED`, `USER_ROLE_CHANGED`, `USER_DISABLED`, `USER_ENABLED`, `USER_SESSIONS_REVOKED`.

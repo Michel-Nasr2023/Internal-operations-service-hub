@@ -106,6 +106,7 @@ export interface TicketComment {
   authorId: string;
   authorName?: string;
   authorRole?: UserRole;
+  authorAvatarUpdatedAt?: string | null;
   body: string;
   createdAt: string;
 }
@@ -114,6 +115,8 @@ export interface TicketComment {
 export interface TicketView extends Ticket {
   requesterName?: string;
   assigneeName?: string;
+  requesterAvatarUpdatedAt?: string | null;
+  assigneeAvatarUpdatedAt?: string | null;
   // When the requesting user last opened this ticket's details (only set on list responses).
   viewedAt?: string;
   attachmentCount?: number;
