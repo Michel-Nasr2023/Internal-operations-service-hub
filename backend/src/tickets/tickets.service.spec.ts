@@ -8,6 +8,7 @@ import { UserEntity } from '../auth/user.entity';
 import { NotificationsService } from '../notifications/notifications.service';
 import { TicketCommentEntity } from './ticket-comment.entity';
 import { TicketViewEntity } from './ticket-view.entity';
+import { TicketAttachmentEntity } from './ticket-attachment.entity';
 import { AuditService } from '../audit/audit.service';
 
 const USERS = [
@@ -49,7 +50,9 @@ describe('TicketsService', () => {
 
     const auditService = { record: async () => undefined, withActorNames: async <T>(rows: T[]) => rows } as unknown as AuditService;
 
-    return new TicketsService(repository, userRepository, commentRepository, viewRepository, analysisQueue, notificationsService, auditService);
+    const attachmentRepository = { find: async () => [] } as unknown as Repository<TicketAttachmentEntity>;
+
+    return new TicketsService(repository, userRepository, commentRepository, viewRepository, attachmentRepository, analysisQueue, notificationsService, auditService);
   }
 
   it('moves a ticket through the documented workflow', async () => {
@@ -112,5 +115,23 @@ describe('TicketsService', () => {
     await service.resolve(ticket.id, { feedback: 'Replaced the bulb.' }, employee);
 
     expect(sent).toEqual([{ to: 'helpdesk', kind: 'ticket-resolved' }]);
+  });
+
+  it('approves and assigns in one step, and changes nothing when the assignee is invalid', async () => {
+    const service = createService();
+    const employee = { id: 'employee-1', role: 'employee' as const };
+    const helpdesk = { id: 'helpdesk-1', role: 'helpdesk' as const };
+    const ticket = await service.create({ title: 'Mouse', description: 'Broken', teamId: 'it', issueType: 'hardware', project: 'Desk' }, employee);
+
+    await expect(service.approve(ticket.id, { priority: Priority.HIGH, assigneeId: 'ghost-99', expectedDurationHours: 2 }, helpdesk)).rejects.toThrow(BadRequestException);
+    expect((await service.findOne(ticket.id, helpdesk)).status).toBe(TicketStatus.PENDING_HELPDESK_REVIEW);
+
+    const approved = await service.approve(ticket.id, { priority: Priority.HIGH, assigneeId: 'assignee-1', expectedDurationHours: 2 }, helpdesk);
+    expect(approved).toMatchObject({ status: TicketStatus.ASSIGNED, priority: Priority.HIGH, assigneeId: 'assignee-1', expectedDurationHours: 2 });
+    expect(approved.auditEvents.map((event) => event.action)).toEqual(['TICKET_SUBMITTED', 'TICKET_APPROVED', 'TICKET_ASSIGNED']);
+
+    await expect(service.approve(ticket.id, { priority: Priority.LOW }, helpdesk)).rejects.toThrow(
+      'This action needs the ticket to be Pending, but it is Assigned. Refresh to see its latest state.',
+    );
   });
 });

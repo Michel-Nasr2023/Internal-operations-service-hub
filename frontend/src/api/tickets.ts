@@ -31,6 +31,7 @@ export interface Ticket {
   assigneeName?: string;
   // When the current user last opened this ticket's details.
   viewedAt?: string;
+  attachmentCount?: number;
   aiResult?: TicketAiAnalysis;
 }
 
@@ -91,11 +92,12 @@ export async function retryTicketAnalysis(id: string): Promise<Ticket> {
 // Same endpoint as getMyTickets; the backend returns every ticket when the caller is Helpdesk.
 export const getTickets = getMyTickets;
 
-export async function approveTicket(id: string, priority: string): Promise<Ticket> {
+// With `assignment`, approves and assigns in one request: the backend does both or neither.
+export async function approveTicket(id: string, priority: string, assignment?: { assigneeId: string; expectedDurationHours: number }): Promise<Ticket> {
   const response = await authFetch(`${apiUrl}/tickets/${id}/approve`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ priority }),
+    body: JSON.stringify({ priority, ...assignment }),
   });
 
   if (!response.ok) {

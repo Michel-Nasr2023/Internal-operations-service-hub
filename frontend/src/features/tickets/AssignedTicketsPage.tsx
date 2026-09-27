@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { claimTicket, getMyTickets, markTicketViewed, resolveTicket, Ticket } from '../../api/tickets';
 import { TicketAiAnalysisPanel } from '../helpdesk/TicketAiAnalysisPanel';
+import { uploadAttachments } from '../../api/attachments';
+import { AttachmentPicker } from './AttachmentPicker';
+import { TicketAttachments } from './TicketAttachments';
+import { AttachmentCount } from './AttachmentCount';
 import { TicketComments } from './TicketComments';
 import { TicketHistory } from './TicketHistory';
 import { TicketResolutionNote } from './TicketResolutionNote';
@@ -55,6 +59,9 @@ export function AssignedTicketsPage({ userId, externalOpenTicketId, onExternalOp
   const [now, setNow] = useState(() => Date.now());
   const [feedbackTicketId, setFeedbackTicketId] = useState<string | null>(null);
   const [feedback, setFeedback] = useState('');
+  const [resolutionFiles, setResolutionFiles] = useState<File[]>([]);
+  // Errors from the Submit panel are shown inside it, not behind it on the page.
+  const [feedbackError, setFeedbackError] = useState('');
   const [reviewTicketId, setReviewTicketId] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState('all');
   const [sortOrder, setSortOrder] = useState<SortOrder>('newest');
@@ -122,6 +129,8 @@ export function AssignedTicketsPage({ userId, externalOpenTicketId, onExternalOp
 
   function openFeedback(ticketId: string) {
     setFeedback('');
+    setResolutionFiles([]);
+    setFeedbackError('');
     setFeedbackTicketId(ticketId);
   }
 
@@ -130,21 +139,27 @@ export function AssignedTicketsPage({ userId, externalOpenTicketId, onExternalOp
     const trimmed = feedback.trim();
 
     if (!trimmed) {
-      setError('Feedback is required to resolve the ticket.');
+      setFeedbackError('Describe how the issue was resolved before submitting.');
       return;
     }
 
-    setError('');
+    setFeedbackError('');
     setNotice('');
     setBusyTicketId(feedbackTicketId);
 
     try {
+      // Files first: if they fail to upload, the ticket stays open so nothing is lost.
+      if (resolutionFiles.length > 0) {
+        await uploadAttachments(feedbackTicketId, resolutionFiles);
+        // Uploaded: clear them so retrying after a failed resolve does not attach them twice.
+        setResolutionFiles([]);
+      }
       await resolveTicket(feedbackTicketId, trimmed);
       setNotice(`Ticket ${feedbackTicketId.slice(0, 8)} resolved.`);
       setFeedbackTicketId(null);
       await loadTickets();
     } catch (actionError) {
-      setError(actionError instanceof Error ? actionError.message : 'The ticket could not be resolved.');
+      setFeedbackError(actionError instanceof Error ? actionError.message : 'The ticket could not be resolved.');
     } finally {
       setBusyTicketId(null);
     }
@@ -222,7 +237,10 @@ export function AssignedTicketsPage({ userId, externalOpenTicketId, onExternalOp
                         {ticket.id.slice(0, 8)}
                         {isUnseen(ticket) && <span className="new-badge">New</span>}
                       </td>
-                      <td>{ticket.title}</td>
+                      <td>
+                        {ticket.title}
+                        <AttachmentCount count={ticket.attachmentCount} />
+                      </td>
                       <td className="description-cell" title={ticket.aiResult?.clarifiedDescription ?? ticket.description}>{ticket.aiResult?.clarifiedDescription ?? ticket.description}</td>
                       <td className="capitalize">{ticket.priority ?? '—'}</td>
                       <td><span className={`status-pill status-${statusSlug(ticket.status)}`}>{ticket.status}</span></td>
@@ -287,6 +305,7 @@ export function AssignedTicketsPage({ userId, externalOpenTicketId, onExternalOp
             <TicketAiAnalysisPanel ticket={reviewTicket} onTicketUpdated={replaceTicket} />
 
             <TicketResolutionNote ticket={reviewTicket} />
+            <TicketAttachments ticket={reviewTicket} />
             <TicketComments ticket={reviewTicket} />
             <TicketHistory ticket={reviewTicket} />
           </div>
@@ -309,7 +328,15 @@ export function AssignedTicketsPage({ userId, externalOpenTicketId, onExternalOp
                 Describe how the issue was resolved
                 <textarea value={feedback} onChange={(event) => setFeedback(event.target.value)} rows={4} placeholder="Explain what was done to resolve this ticket." />
               </label>
+              <AttachmentPicker
+                files={resolutionFiles}
+                onChange={setResolutionFiles}
+                label="Attachments (optional): photos of the fix, reports, logs"
+                disabled={busyTicketId === feedbackTicket.id}
+              />
             </div>
+
+            {feedbackError && <p className="message error" role="alert">{feedbackError}</p>}
 
             <div className="modal-actions">
               <div className="modal-action-group">

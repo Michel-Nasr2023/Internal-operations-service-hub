@@ -8,6 +8,7 @@ import { NotificationEntity } from '../notifications/notification.entity';
 import { NotificationsService } from '../notifications/notifications.service';
 import { TicketCommentEntity } from './ticket-comment.entity';
 import { TicketViewEntity } from './ticket-view.entity';
+import { TicketAttachmentEntity } from './ticket-attachment.entity';
 import { AuditLogEntity } from '../audit/audit-log.entity';
 import { AuditService } from '../audit/audit.service';
 import { TicketAnalysisQueue } from './ticket-analysis.queue';
@@ -19,7 +20,7 @@ describe('TicketsService SQLite integration', () => {
     dataSource = await new DataSource({
       type: 'sqlite',
       database: ':memory:',
-      entities: [TicketEntity, UserEntity, NotificationEntity, TicketCommentEntity, TicketViewEntity, AuditLogEntity],
+      entities: [TicketEntity, UserEntity, NotificationEntity, TicketCommentEntity, TicketViewEntity, AuditLogEntity, TicketAttachmentEntity],
       synchronize: true,
     }).initialize();
   });
@@ -72,6 +73,7 @@ describe('TicketsService SQLite integration', () => {
       dataSource.getRepository(UserEntity),
       dataSource.getRepository(TicketCommentEntity),
       dataSource.getRepository(TicketViewEntity),
+      dataSource.getRepository(TicketAttachmentEntity),
       queue,
       notificationsService,
       auditService,

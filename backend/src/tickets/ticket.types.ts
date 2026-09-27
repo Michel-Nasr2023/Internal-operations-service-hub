@@ -116,4 +116,5 @@ export interface TicketView extends Ticket {
   assigneeName?: string;
   // When the requesting user last opened this ticket's details (only set on list responses).
   viewedAt?: string;
+  attachmentCount?: number;
 }

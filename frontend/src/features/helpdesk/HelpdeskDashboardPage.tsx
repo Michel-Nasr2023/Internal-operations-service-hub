@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { approveTicket, assignTicket, getTickets, markTicketViewed, rejectTicket, Ticket } from '../../api/tickets';
 import { DirectoryUser, listAssignableEmployees } from '../../api/auth';
 import { TicketAiAnalysisPanel } from './TicketAiAnalysisPanel';
+import { TicketAttachments } from '../tickets/TicketAttachments';
+import { AttachmentCount } from '../tickets/AttachmentCount';
 import { TicketComments } from '../tickets/TicketComments';
 import { TicketHistory } from '../tickets/TicketHistory';
 import { TicketResolutionNote } from '../tickets/TicketResolutionNote';
@@ -77,6 +79,16 @@ export function HelpdeskDashboardPage({ externalOpenTicketId, onExternalOpenHand
       setEmployees(await listAssignableEmployees());
     } catch {
       // The assign dropdown will just show no options if the directory cannot be loaded.
+    }
+  }
+
+  // Re-reads the queue without the loading state, so an open review panel shows the ticket's real status
+  // after an action fails (for example if someone else already handled it).
+  async function refreshQuietly() {
+    try {
+      setTickets(await getTickets());
+    } catch {
+      // The error already shown to the user is enough.
     }
   }
 
@@ -158,13 +170,13 @@ export function HelpdeskDashboardPage({ externalOpenTicketId, onExternalOpenHand
     setBusyTicketId(ticket.id);
 
     try {
-      await approveTicket(ticket.id, draft.priority);
-      await assignTicket(ticket.id, assigneeId, expectedDurationHours);
+      await approveTicket(ticket.id, draft.priority, { assigneeId, expectedDurationHours });
       setNotice(`Ticket ${ticket.id.slice(0, 8)} approved and assigned.`);
       closeReview();
       await loadTickets();
     } catch (actionError) {
       setModalError(actionError instanceof Error ? actionError.message : 'The ticket could not be approved and assigned.');
+      await refreshQuietly();
     } finally {
       setBusyTicketId(null);
     }
@@ -188,6 +200,7 @@ export function HelpdeskDashboardPage({ externalOpenTicketId, onExternalOpenHand
       await loadTickets();
     } catch (actionError) {
       setModalError(actionError instanceof Error ? actionError.message : 'The ticket could not be rejected.');
+      await refreshQuietly();
     } finally {
       setBusyTicketId(null);
     }
@@ -218,6 +231,7 @@ export function HelpdeskDashboardPage({ externalOpenTicketId, onExternalOpenHand
       await loadTickets();
     } catch (actionError) {
       setModalError(actionError instanceof Error ? actionError.message : 'The ticket could not be assigned.');
+      await refreshQuietly();
     } finally {
       setBusyTicketId(null);
     }
@@ -341,7 +355,10 @@ export function HelpdeskDashboardPage({ externalOpenTicketId, onExternalOpenHand
                       {ticket.id.slice(0, 8)}
                       {isUnseen(ticket) && <span className="new-badge">New</span>}
                     </td>
-                    <td>{ticket.title}</td>
+                    <td>
+                      {ticket.title}
+                      <AttachmentCount count={ticket.attachmentCount} />
+                    </td>
                     <td className="description-cell" title={ticket.aiResult?.clarifiedDescription ?? ticket.description}>{ticket.aiResult?.clarifiedDescription ?? ticket.description}</td>
                     <td>{ticket.requesterName ?? ticket.requesterId}</td>
                     <td>{TEAM_LABELS[ticket.teamId] ?? ticket.teamId}</td>
@@ -388,6 +405,7 @@ export function HelpdeskDashboardPage({ externalOpenTicketId, onExternalOpenHand
 
             <TicketAiAnalysisPanel ticket={reviewTicket} onTicketUpdated={replaceTicket} canRetry />
             <TicketResolutionNote ticket={reviewTicket} />
+            <TicketAttachments ticket={reviewTicket} />
 
             {modalError && <p className="message error" role="alert">{modalError}</p>}
 

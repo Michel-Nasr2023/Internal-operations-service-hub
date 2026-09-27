@@ -7,6 +7,7 @@ import { TicketEntity } from './tickets/ticket.entity';
 import { TicketCommentEntity } from './tickets/ticket-comment.entity';
 import { TicketViewEntity } from './tickets/ticket-view.entity';
 import { AuditLogEntity } from './audit/audit-log.entity';
+import { TicketAttachmentEntity } from './tickets/ticket-attachment.entity';
 import { AuditModule } from './audit/audit.module';
 import { NotificationEntity } from './notifications/notification.entity';
 import { NotificationsModule } from './notifications/notifications.module';
@@ -16,7 +17,7 @@ import { NotificationsModule } from './notifications/notifications.module';
     TypeOrmModule.forRoot({
       type: 'sqlite',
       database: 'data/tickets.sqlite',
-      entities: [TicketEntity, UserEntity, NotificationEntity, TicketCommentEntity, TicketViewEntity, AuditLogEntity],
+      entities: [TicketEntity, UserEntity, NotificationEntity, TicketCommentEntity, TicketViewEntity, AuditLogEntity, TicketAttachmentEntity],
       synchronize: true,
     }),
     AuthModule,

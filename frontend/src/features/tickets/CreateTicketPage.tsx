@@ -1,5 +1,9 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { createTicket, CreateTicketInput, getMyTickets, Ticket } from '../../api/tickets';
+import { uploadAttachments } from '../../api/attachments';
+import { AttachmentPicker } from './AttachmentPicker';
+import { TicketAttachments } from './TicketAttachments';
+import { AttachmentCount } from './AttachmentCount';
 import { TicketComments } from './TicketComments';
 import { TicketHistory } from './TicketHistory';
 import { TicketResolutionNote } from './TicketResolutionNote';
@@ -40,6 +44,9 @@ export function CreateTicketPage({ userId, externalOpenTicketId, onExternalOpenH
   const [createdTicket, setCreatedTicket] = useState<Ticket | null>(null);
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [files, setFiles] = useState<File[]>([]);
+  const [attachmentWarning, setAttachmentWarning] = useState('');
+  const [attachmentsVersion, setAttachmentsVersion] = useState(0);
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [isLoadingTickets, setIsLoadingTickets] = useState(true);
   const [reviewTicketId, setReviewTicketId] = useState<string | null>(null);
@@ -84,12 +91,22 @@ export function CreateTicketPage({ userId, externalOpenTicketId, onExternalOpenH
     event.preventDefault();
     setIsSubmitting(true);
     setError('');
+    setAttachmentWarning('');
     setCreatedTicket(null);
 
     try {
       const ticket = await createTicket(form);
+      // The ticket is saved even if its files fail to upload; the employee is told and can add them later.
+      if (files.length > 0) {
+        try {
+          await uploadAttachments(ticket.id, files);
+        } catch (uploadError) {
+          setAttachmentWarning(`Your ticket was saved, but the files were not attached: ${uploadError instanceof Error ? uploadError.message : 'upload failed.'} You can attach them from the ticket's Review panel.`);
+        }
+      }
       setCreatedTicket(ticket);
       setForm(initialForm);
+      setFiles([]);
       await loadTickets();
     } catch (submissionError) {
       setError(submissionError instanceof Error ? submissionError.message : 'The ticket could not be created.');
@@ -129,6 +146,8 @@ export function CreateTicketPage({ userId, externalOpenTicketId, onExternalOpenH
               <textarea value={form.description} onChange={(event) => updateField('description', event.target.value)} placeholder="Include what happened and what you have already tried." maxLength={5000} rows={5} required />
             </label>
 
+            <AttachmentPicker files={files} onChange={setFiles} label="Attachments (optional): screenshots, photos, error logs" disabled={isSubmitting} />
+
             <div className="field-grid field-grid-3">
               <label>
                 Team
@@ -154,6 +173,7 @@ export function CreateTicketPage({ userId, externalOpenTicketId, onExternalOpenH
             </div>
 
             {error && <p className="message error" role="alert">{error}</p>}
+            {attachmentWarning && <p className="message error" role="alert">{attachmentWarning}</p>}
             {createdTicket && <p className="message success" role="status">Ticket <strong>{createdTicket.id.slice(0, 8)}</strong> submitted. Helpdesk will review it shortly.</p>}
 
             <button type="submit" disabled={isSubmitting}>{isSubmitting ? 'Submitting...' : 'Submit ticket'}</button>
@@ -211,7 +231,10 @@ export function CreateTicketPage({ userId, externalOpenTicketId, onExternalOpenH
                   {filteredTickets.map((ticket) => (
                     <tr key={ticket.id}>
                       <td className="mono">{ticket.id.slice(0, 8)}</td>
-                      <td>{ticket.title}</td>
+                      <td>
+                        {ticket.title}
+                        <AttachmentCount count={ticket.attachmentCount} />
+                      </td>
                       <td>{TEAM_LABELS[ticket.teamId] ?? ticket.teamId}</td>
                       <td className="capitalize">{ticket.issueType}</td>
                       <td>{ticket.project}</td>
@@ -284,10 +307,49 @@ export function CreateTicketPage({ userId, externalOpenTicketId, onExternalOpenH
             )}
 
             <TicketResolutionNote ticket={reviewTicket} />
+            <TicketAttachments key={`${reviewTicket.id}-${attachmentsVersion}`} ticket={reviewTicket} />
+            {reviewTicket.status !== 'Resolved' && reviewTicket.status !== 'Rejected' && (
+              <RequesterAttachmentUpload ticketId={reviewTicket.id} onUploaded={() => {
+                setAttachmentsVersion((version) => version + 1);
+                void loadTickets();
+              }} />
+            )}
             <TicketComments ticket={reviewTicket} />
             <TicketHistory ticket={reviewTicket} />
           </div>
         </div>
+      )}
+    </div>
+  );
+}
+// Lets the requester add files to an open ticket after submitting it.
+function RequesterAttachmentUpload({ ticketId, onUploaded }: { ticketId: string; onUploaded: () => void }) {
+  const [files, setFiles] = useState<File[]>([]);
+  const [isUploading, setIsUploading] = useState(false);
+  const [error, setError] = useState('');
+
+  async function handleUpload() {
+    setError('');
+    setIsUploading(true);
+    try {
+      await uploadAttachments(ticketId, files);
+      setFiles([]);
+      onUploaded();
+    } catch (uploadError) {
+      setError(uploadError instanceof Error ? uploadError.message : 'The files could not be uploaded.');
+    } finally {
+      setIsUploading(false);
+    }
+  }
+
+  return (
+    <div className="modal-attachment-upload">
+      <AttachmentPicker files={files} onChange={setFiles} label="Add files to this ticket" disabled={isUploading} />
+      {error && <p className="message error" role="alert">{error}</p>}
+      {files.length > 0 && (
+        <button type="button" className="review-button review-button-active" onClick={() => void handleUpload()} disabled={isUploading}>
+          {isUploading ? 'Uploading...' : `Upload ${files.length} file${files.length === 1 ? '' : 's'}`}
+        </button>
       )}
     </div>
   );

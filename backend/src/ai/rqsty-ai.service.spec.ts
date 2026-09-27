@@ -53,7 +53,12 @@ describe('RqstyAiService', () => {
     const reply = { ...validAnalysis, issueType: 'ACCESS', severity: 'major', missingInformation: ['Which VPN client version is installed?', 42] };
     jest.spyOn(global, 'fetch').mockResolvedValue(completion('Here you go:\n```json\n' + JSON.stringify(reply) + '\n```'));
 
+    const fetchSpy = jest.spyOn(global, 'fetch');
     const result = await new TestAiService().analyzeTicket(input);
+
+    // The project/area reaches the model under a self-explanatory name.
+    const sent = JSON.parse(String(fetchSpy.mock.calls[0][1]?.body)) as { messages: Array<{ content: string }> };
+    expect(JSON.parse(sent.messages[1].content)).toMatchObject({ projectOrArea: 'Internal tools', subject: 'vpn not working' });
 
     expect(result).toMatchObject({
       source: 'ai',

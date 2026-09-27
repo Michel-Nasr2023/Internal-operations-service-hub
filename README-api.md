@@ -29,7 +29,7 @@ GET    /api/auth/users          (Helpdesk only)
 POST   /api/tickets
 GET    /api/tickets
 GET    /api/tickets/:id
-POST   /api/tickets/:id/approve
+POST   /api/tickets/:id/approve           ({ priority } or { priority, assigneeId, expectedDurationHours } to approve and assign in one step)
 POST   /api/tickets/:id/reject
 PATCH  /api/tickets/:id/priority
 POST   /api/tickets/:id/assign
@@ -37,6 +37,9 @@ POST   /api/tickets/:id/claim
 POST   /api/tickets/:id/resolve
 POST   /api/tickets/:id/ai-analysis      (Helpdesk: run the AI analysis again, e.g. after it failed)
 POST   /api/tickets/:id/view             (marks the ticket as opened by the current user)
+GET    /api/tickets/:id/attachments
+POST   /api/tickets/:id/attachments        (multipart/form-data, field "files")
+GET    /api/tickets/:id/attachments/:attachmentId/download
 GET    /api/tickets/:id/comments
 POST   /api/tickets/:id/comments
 GET    /api/tickets/:id/audit-events
@@ -86,3 +89,12 @@ Comments can be read and added by the requester, the assignee and Helpdesk while
 - `source: "failed"`: the AI could not answer. `failureCode` is `not-configured`, `timeout`, `rate-limited`, `provider-error`, `network` or `invalid-response`, and `failureReason` explains it in plain language. No substitute analysis is generated.
 
 Busy or overloaded responses (429, 5xx), network errors and unusable answers are retried up to 3 times, with 5 s and 15 s pauses. Timeouts and rejected API keys are not retried. Each request waits up to 90 s (`RQSTY_TIMEOUT_MS`). Tickets still pending when the API restarts are picked up again on start-up. Outcomes are recorded in the audit log as `AI_ANALYSIS_COMPLETED`, `AI_ANALYSIS_FAILED` and `AI_ANALYSIS_REQUESTED`.
+
+## Attachments
+
+Attachments are optional. The requester can attach files to their ticket while it is open (`stage: "submission"`), and the assignee can attach files once they have claimed it, typically when resolving (`stage: "resolution"`). Anyone who can read the ticket can list and download them.
+
+- Up to 5 files per upload, 10 MB each (larger files get `413`), and 10 per ticket.
+- Allowed types: png, jpg, jpeg, gif, webp, pdf, txt, log, csv, docx, xlsx. A file's first bytes must match its extension, so a renamed executable or script is refused. An upload is all-or-nothing.
+- File bytes are stored on disk under a random ID in `backend/data/attachments/` (override with `ATTACHMENTS_DIR`); only metadata is stored in SQLite. Downloads are always served as file downloads with `X-Content-Type-Options: nosniff`.
+- Each upload adds an `ATTACHMENTS_ADDED` entry to the ticket history and the audit log.

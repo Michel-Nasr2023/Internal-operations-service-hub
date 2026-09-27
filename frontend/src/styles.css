@@ -1310,6 +1310,186 @@ button:disabled {
   font-size: .8rem;
 }
 
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.attachment-picker {
+  display: grid;
+  gap: .45rem;
+  margin-top: .25rem;
+}
+
+.attachment-picker-label {
+  color: #263641;
+  font-size: .88rem;
+  font-weight: 600;
+}
+
+.attachment-drop {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .35rem .6rem;
+  padding: .75rem .9rem;
+  border: 1.5px dashed #b9cbc3;
+  border-radius: 8px;
+  background: #f7faf8;
+  color: #1e4f48;
+  font-weight: 700;
+  font-size: .88rem;
+  cursor: pointer;
+}
+
+.attachment-drop:hover {
+  border-color: #1e4f48;
+  background: #eef5f2;
+}
+
+.attachment-drop small {
+  flex-basis: 100%;
+  color: #68767c;
+  font-weight: 400;
+  font-size: .74rem;
+}
+
+.attachment-drop-disabled {
+  opacity: .55;
+  cursor: not-allowed;
+}
+
+/* The file input is visually hidden, so show keyboard focus on its visible label. */
+.attachment-picker:focus-within .attachment-drop {
+  outline: 2px solid #1e8a4c;
+  outline-offset: 2px;
+}
+
+.attachment-chips {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: .4rem;
+}
+
+.attachment-chips li {
+  display: flex;
+  align-items: center;
+  gap: .4rem;
+  max-width: 100%;
+  padding: .3rem .35rem .3rem .65rem;
+  border-radius: 999px;
+  background: #e8f1ed;
+  font-size: .8rem;
+}
+
+.attachment-chip-name {
+  overflow: hidden;
+  max-width: 14rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attachment-chips small {
+  color: #586772;
+}
+
+.attachment-remove {
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: #586772;
+  font-size: .75rem;
+}
+
+.attachment-remove:hover:not(:disabled) {
+  background: #d5e4dd;
+  color: #18212b;
+  transform: none;
+}
+
+.ticket-attachments {
+  margin-bottom: 1.25rem;
+}
+
+.attachment-group {
+  margin-top: .6rem;
+}
+
+.attachment-group-title {
+  margin: 0 0 .4rem;
+  color: #586772;
+  font-size: .78rem;
+  font-weight: 700;
+}
+
+.attachment-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: .45rem;
+}
+
+.attachment-list li {
+  display: flex;
+  align-items: center;
+  gap: .65rem;
+  padding: .6rem .75rem;
+  border-radius: 8px;
+  background: #f6f9f7;
+}
+
+.attachment-list li > div {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.attachment-list strong {
+  display: block;
+  overflow: hidden;
+  color: #18212b;
+  font-size: .86rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attachment-list small {
+  display: block;
+  color: #68767c;
+  font-size: .74rem;
+}
+
+.modal-attachment-upload {
+  display: grid;
+  justify-items: start;
+  gap: .5rem;
+  margin-bottom: 1.25rem;
+}
+
+.attachment-count {
+  display: inline-flex;
+  align-items: center;
+  gap: .15rem;
+  margin-left: .45rem;
+  padding: .1rem .45rem;
+  border-radius: 999px;
+  background: #eef1f0;
+  color: #3f5660;
+  font-size: .74rem;
+  font-weight: 600;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
 .overdue-pill {
   margin-left: .35rem;
 }

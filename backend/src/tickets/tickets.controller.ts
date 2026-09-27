@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { CurrentUser, requireRole } from './auth.decorator';
-import { AddCommentDto, AssignTicketDto, CreateTicketDto, RejectTicketDto, ResolveTicketDto, SetPriorityDto, TicketListQueryDto } from './ticket.dto';
+import { AddCommentDto, ApproveTicketDto, AssignTicketDto, CreateTicketDto, RejectTicketDto, ResolveTicketDto, SetPriorityDto, TicketListQueryDto } from './ticket.dto';
 import { AuthenticatedUser } from './ticket.types';
 import { TicketsService } from './tickets.service';
 
@@ -25,7 +25,7 @@ export class TicketsController {
   }
 
   @Post(':id/approve')
-  approve(@Param('id') id: string, @Body() dto: SetPriorityDto, @CurrentUser() user: AuthenticatedUser) {
+  approve(@Param('id') id: string, @Body() dto: ApproveTicketDto, @CurrentUser() user: AuthenticatedUser) {
     return this.ticketsService.approve(id, dto, user);
   }
 

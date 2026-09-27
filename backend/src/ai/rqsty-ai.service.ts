@@ -34,8 +34,11 @@ const SYSTEM_PROMPT = `You are the intake assistant for an internal operations h
 
 Rewrite the submission so the Helpdesk agent understands it at a glance, and triage it.
 
+The input fields are: requester (who submitted it), selectedTeam and selectedIssueType (chosen by the employee), projectOrArea (the project, room, building, office or system the ticket is about, written by the employee; codes such as "AG307" are usually room or project codes), subject, and description.
+
 Rules:
 - Keep every fact the employee gave (symptoms, error messages, devices, applications, locations, timing, what they already tried). Never invent facts, causes, or steps they did not mention.
+- projectOrArea is part of what the employee told you. Always mention it in clarifiedDescription (for example "in AG307" or "for the AG307 project"), and never say that a location or area is missing when projectOrArea is given.
 - Write clarifiedDescription in the third person ("The employee reports..."), in clear professional English, 2 to 6 sentences. Fix spelling and grammar and remove filler.
 - summary is one line of at most 120 characters describing the problem.
 - issueType is one of: hardware, software, network, access. Physical furniture or workplace equipment counts as hardware. If you cannot tell, use the issue type the employee selected.
@@ -108,7 +111,7 @@ export class RqstyAiService {
           requester: { name: input.requesterName, jobTitle: input.jobTitle },
           selectedTeam: input.team,
           selectedIssueType: input.issueType,
-          project: input.project,
+          projectOrArea: input.project,
           subject: input.title,
           description: input.description,
         }),

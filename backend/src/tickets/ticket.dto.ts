@@ -50,6 +50,20 @@ export class SetPriorityDto {
   priority!: Priority;
 }
 
+// Approve, optionally assigning in the same step. Both assignment fields are given together or not at all.
+export class ApproveTicketDto extends SetPriorityDto {
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  assigneeId?: string;
+
+  @IsOptional()
+  @IsInt()
+  @IsPositive()
+  @Min(1)
+  expectedDurationHours?: number;
+}
+
 export class AssignTicketDto {
   @IsNotEmpty()
   @IsString()

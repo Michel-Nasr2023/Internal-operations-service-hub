@@ -2,11 +2,12 @@ import { BadRequestException, ConflictException, ForbiddenException, Injectable,
 import { InjectRepository } from '@nestjs/typeorm';
 import { randomUUID } from 'node:crypto';
 import { In, Repository } from 'typeorm';
-import { AddCommentDto, AssignTicketDto, CreateTicketDto, RejectTicketDto, ResolveTicketDto, SetPriorityDto } from './ticket.dto';
+import { AddCommentDto, ApproveTicketDto, AssignTicketDto, CreateTicketDto, RejectTicketDto, ResolveTicketDto, SetPriorityDto } from './ticket.dto';
 import { TicketEntity } from './ticket.entity';
 import { AuthenticatedUser, AuditEvent, Priority, Ticket, TicketComment, TicketStatus, TicketView } from './ticket.types';
 import { TicketCommentEntity } from './ticket-comment.entity';
 import { TicketViewEntity } from './ticket-view.entity';
+import { TicketAttachmentEntity } from './ticket-attachment.entity';
 import { TicketAnalysisQueue } from './ticket-analysis.queue';
 import { UserEntity } from '../auth/user.entity';
 import { AuditService } from '../audit/audit.service';
@@ -21,6 +22,7 @@ export class TicketsService {
     @InjectRepository(UserEntity) private readonly userRepository: Repository<UserEntity>,
     @InjectRepository(TicketCommentEntity) private readonly commentRepository: Repository<TicketCommentEntity>,
     @InjectRepository(TicketViewEntity) private readonly viewRepository: Repository<TicketViewEntity>,
+    @InjectRepository(TicketAttachmentEntity) private readonly attachmentRepository: Repository<TicketAttachmentEntity>,
     private readonly analysisQueue: TicketAnalysisQueue,
     private readonly notificationsService: NotificationsService,
     private readonly auditService: AuditService,
@@ -53,6 +55,13 @@ export class TicketsService {
     void this.analysisQueue.enqueue(saved.id);
     await this.notify((n) => n.notifyHelpdesk({ kind: 'ticket-submitted', ticket: saved, message: 'New ticket awaiting review.' }, user.id));
     return this.present(saved);
+  }
+
+  // Adds a workflow-history entry that is not a status change (e.g. files attached), and mirrors it to the audit log.
+  async recordHistory(ticketId: string, user: AuthenticatedUser, action: string, reason?: string): Promise<void> {
+    const ticket = await this.get(ticketId);
+    this.addAudit(ticket, user, action, undefined, undefined, reason);
+    await this.persist(ticket);
   }
 
   // Plan B when the AI failed: Helpdesk can ask for the analysis to be run again.
@@ -98,14 +107,26 @@ export class TicketsService {
     return this.present(ticket);
   }
 
-  async approve(id: string, dto: SetPriorityDto, user: AuthenticatedUser): Promise<TicketView> {
+  // With `assigneeId` + `expectedDurationHours`, approves and assigns in one save: either both happen or neither.
+  async approve(id: string, dto: ApproveTicketDto, user: AuthenticatedUser): Promise<TicketView> {
     const ticket = await this.get(id);
     this.assertHelpdesk(user);
     this.assertStatus(ticket, TicketStatus.PENDING_HELPDESK_REVIEW);
+
+    const assigning = dto.assigneeId !== undefined || dto.expectedDurationHours !== undefined;
+    if (assigning && (!dto.assigneeId || !dto.expectedDurationHours)) {
+      throw new BadRequestException('To assign while approving, give both an assignee and the expected hours');
+    }
+    // Everything is checked before the ticket changes, so a bad assignee cannot leave it half-updated.
+    if (assigning) await this.assertAssignable(dto.assigneeId!);
+
     ticket.priority = dto.priority;
     this.transition(ticket, user, TicketStatus.APPROVED, 'TICKET_APPROVED');
+    if (assigning) this.applyAssignment(ticket, user, dto.assigneeId!, dto.expectedDurationHours!);
     const saved = await this.persist(ticket);
+
     await this.notify((n) => n.notifyUser(saved.requesterId, { kind: 'ticket-approved', ticket: saved, message: `Approved with ${saved.priority} priority.` }, user.id));
+    if (assigning) await this.notifyAssignee(saved, user);
     return this.present(saved);
   }
 
@@ -136,25 +157,36 @@ export class TicketsService {
     const ticket = await this.get(id);
     this.assertHelpdesk(user);
     this.assertStatus(ticket, TicketStatus.APPROVED);
-    const assignee = await this.userRepository.findOneBy({ id: dto.assigneeId });
+    await this.assertAssignable(dto.assigneeId);
+    this.applyAssignment(ticket, user, dto.assigneeId, dto.expectedDurationHours);
+    const saved = await this.persist(ticket);
+    await this.notifyAssignee(saved, user);
+    return this.present(saved);
+  }
+
+  private async assertAssignable(assigneeId: string): Promise<void> {
+    const assignee = await this.userRepository.findOneBy({ id: assigneeId });
     if (!assignee || assignee.status !== 'active') {
       throw new BadRequestException('The selected assignee does not exist or is not active');
     }
-    const now = new Date();
-    ticket.assigneeId = dto.assigneeId;
-    ticket.assignedAt = now.toISOString();
-    ticket.expectedDurationHours = dto.expectedDurationHours;
+  }
+
+  private applyAssignment(ticket: Ticket, user: AuthenticatedUser, assigneeId: string, expectedDurationHours: number): void {
+    ticket.assigneeId = assigneeId;
+    ticket.assignedAt = new Date().toISOString();
+    ticket.expectedDurationHours = expectedDurationHours;
     this.transition(ticket, user, TicketStatus.ASSIGNED, 'TICKET_ASSIGNED');
-    const saved = await this.persist(ticket);
+  }
+
+  private async notifyAssignee(ticket: Ticket, user: AuthenticatedUser): Promise<void> {
     await this.notify((n) =>
-      n.notifyUser(saved.assigneeId, {
+      n.notifyUser(ticket.assigneeId, {
         kind: 'ticket-assigned',
-        ticket: saved,
-        message: `Assigned to you. Expected duration: ${saved.expectedDurationHours}h.`,
-        dedupeKey: `ticket-assigned:${saved.id}:${saved.assignedAt}`,
+        ticket,
+        message: `Assigned to you. Expected duration: ${ticket.expectedDurationHours}h.`,
+        dedupeKey: `ticket-assigned:${ticket.id}:${ticket.assignedAt}`,
       }, user.id),
     );
-    return this.present(saved);
   }
 
   async claim(id: string, user: AuthenticatedUser): Promise<TicketView> {
@@ -223,12 +255,17 @@ export class TicketsService {
     const names = new Map(users.map((user) => [user.id, fullName(user)]));
     const views = viewer ? await this.viewRepository.findBy({ userId: viewer.id }) : [];
     const viewedAt = new Map(views.map((view) => [view.ticketId, view.viewedAt]));
+    const ticketIds = tickets.map((ticket) => ticket.id);
+    const attachments = ticketIds.length > 0 ? await this.attachmentRepository.find({ select: { ticketId: true }, where: { ticketId: In(ticketIds) } }) : [];
+    const attachmentCounts = new Map<string, number>();
+    for (const attachment of attachments) attachmentCounts.set(attachment.ticketId, (attachmentCounts.get(attachment.ticketId) ?? 0) + 1);
 
     return tickets.map((ticket) => ({
       ...ticket,
       requesterName: names.get(ticket.requesterId),
       assigneeName: ticket.assigneeId ? names.get(ticket.assigneeId) : undefined,
       viewedAt: viewer ? viewedAt.get(ticket.id) : undefined,
+      attachmentCount: attachmentCounts.get(ticket.id) ?? 0,
     }));
   }
 
@@ -310,7 +347,9 @@ export class TicketsService {
 
   private assertStatus(ticket: Ticket, expected: TicketStatus): void {
     if (ticket.status !== expected) {
-      throw new ConflictException(`Ticket must be ${expected}`);
+      throw new ConflictException(
+        `This action needs the ticket to be ${statusLabel(expected)}, but it is ${statusLabel(ticket.status)}. Refresh to see its latest state.`,
+      );
     }
   }
 
@@ -372,6 +411,8 @@ export class TicketsService {
         return `Resolved ${title}`;
       case 'COMMENT_ADDED':
         return `Commented on ${title}`;
+      case 'ATTACHMENTS_ADDED':
+        return `Attached ${truncate(reason ?? 'files', 200)} to ${title}`;
       default:
         return `${action} on ${title}`;
     }
@@ -389,4 +430,9 @@ function fullName(user: Pick<UserEntity, 'firstName' | 'lastName'>): string {
 
 function truncate(text: string, length: number): string {
   return text.length > length ? `${text.slice(0, length - 1)}…` : text;
+}
+
+// Short status names, matching what the tables show.
+function statusLabel(status: TicketStatus): string {
+  return status === TicketStatus.PENDING_HELPDESK_REVIEW ? 'Pending' : status;
 }
