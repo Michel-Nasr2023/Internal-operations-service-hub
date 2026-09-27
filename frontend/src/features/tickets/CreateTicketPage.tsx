@@ -1,12 +1,16 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { createTicket, CreateTicketInput, getMyTickets, Ticket } from '../../api/tickets';
+import { TicketComments } from './TicketComments';
+import { TicketHistory } from './TicketHistory';
+import { TicketResolutionNote } from './TicketResolutionNote';
+import { SortOrder, SortSelect, sortTickets } from './ticketSort';
 
 const initialForm: CreateTicketInput = {
   title: '',
   description: '',
   teamId: 'it',
   issueType: 'hardware',
-  project: 'internal',
+  project: '',
 };
 
 const TEAM_LABELS: Record<string, string> = {
@@ -26,11 +30,12 @@ function displayStatus(status: string): string {
 }
 
 interface CreateTicketPageProps {
+  userId: string;
   externalOpenTicketId?: string | null;
   onExternalOpenHandled?: () => void;
 }
 
-export function CreateTicketPage({ externalOpenTicketId, onExternalOpenHandled }: CreateTicketPageProps = {}) {
+export function CreateTicketPage({ userId, externalOpenTicketId, onExternalOpenHandled }: CreateTicketPageProps) {
   const [form, setForm] = useState(initialForm);
   const [createdTicket, setCreatedTicket] = useState<Ticket | null>(null);
   const [error, setError] = useState('');
@@ -40,12 +45,14 @@ export function CreateTicketPage({ externalOpenTicketId, onExternalOpenHandled }
   const [reviewTicketId, setReviewTicketId] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState('all');
   const [teamFilter, setTeamFilter] = useState('all');
+  const [sortOrder, setSortOrder] = useState<SortOrder>('newest');
 
   async function loadTickets() {
     setIsLoadingTickets(true);
 
     try {
-      setTickets(await getMyTickets());
+      // The API also returns tickets assigned to this user; those belong on My tasks, not here.
+      setTickets((await getMyTickets()).filter((ticket) => ticket.requesterId === userId));
     } catch (loadingError) {
       setError(loadingError instanceof Error ? loadingError.message : 'Your saved tickets could not be loaded.');
     } finally {
@@ -55,7 +62,8 @@ export function CreateTicketPage({ externalOpenTicketId, onExternalOpenHandled }
 
   useEffect(() => {
     void loadTickets();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId]);
 
   useEffect(() => {
     if (!externalOpenTicketId) return;
@@ -92,7 +100,7 @@ export function CreateTicketPage({ externalOpenTicketId, onExternalOpenHandled }
 
   const reviewTicket = tickets.find((ticket) => ticket.id === reviewTicketId) ?? null;
 
-  const filteredTickets = tickets.filter((ticket) => {
+  const filteredTickets = sortTickets(tickets, sortOrder).filter((ticket) => {
     if (statusFilter !== 'all' && ticket.status !== statusFilter) return false;
     if (teamFilter !== 'all' && ticket.teamId !== teamFilter) return false;
     return true;
@@ -135,32 +143,18 @@ export function CreateTicketPage({ externalOpenTicketId, onExternalOpenHandled }
                 <select value={form.issueType} onChange={(event) => updateField('issueType', event.target.value)}>
                   <option value="hardware">Hardware</option>
                   <option value="software">Software</option>
+                  <option value="network">Network</option>
                   <option value="access">Access</option>
                 </select>
               </label>
               <label>
                 Project or area
-                <input value={form.project} onChange={(event) => updateField('project', event.target.value)} placeholder="e.g. Internal tools" required />
+                <input value={form.project} onChange={(event) => updateField('project', event.target.value)} placeholder="e.g. Office printer, Finance app, VPN" required />
               </label>
             </div>
 
             {error && <p className="message error" role="alert">{error}</p>}
-            {createdTicket && <p className="message success" role="status">Ticket <strong>{createdTicket.id.slice(0, 8)}</strong> saved. Status: {createdTicket.status}.</p>}
-
-            {createdTicket?.aiResult && (
-              <section className="ai-result" aria-labelledby="ai-result-title">
-                <p className="eyebrow">AI STRUCTURED RESULT</p>
-                <h3 id="ai-result-title">Request interpreted successfully</h3>
-                <dl>
-                  <div><dt>Employee ID</dt><dd>{createdTicket.aiResult.employeeId}</dd></div>
-                  <div><dt>Job title</dt><dd>{createdTicket.aiResult.jobTitle}</dd></div>
-                  <div><dt>Issue type</dt><dd>{createdTicket.aiResult.issueType}</dd></div>
-                  <div><dt>Severity</dt><dd>{createdTicket.aiResult.severity}</dd></div>
-                  <div><dt>Product</dt><dd>{createdTicket.aiResult.productName}</dd></div>
-                  <div><dt>Recommended action</dt><dd>{createdTicket.aiResult.recommendedAction}</dd></div>
-                </dl>
-              </section>
-            )}
+            {createdTicket && <p className="message success" role="status">Ticket <strong>{createdTicket.id.slice(0, 8)}</strong> submitted. Helpdesk will review it shortly.</p>}
 
             <button type="submit" disabled={isSubmitting}>{isSubmitting ? 'Submitting...' : 'Submit ticket'}</button>
           </form>
@@ -173,6 +167,7 @@ export function CreateTicketPage({ externalOpenTicketId, onExternalOpenHandled }
           </div>
 
           <div className="filter-bar">
+            <SortSelect value={sortOrder} onChange={setSortOrder} />
             <label>
               Status
               <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
@@ -225,8 +220,7 @@ export function CreateTicketPage({ externalOpenTicketId, onExternalOpenHandled }
                       <td>
                         <button
                           type="button"
-                          className={ticket.status === 'Pending Helpdesk Review' ? 'review-button review-button-disabled' : 'review-button review-button-active'}
-                          disabled={ticket.status === 'Pending Helpdesk Review'}
+                          className="review-button review-button-outline"
                           onClick={() => setReviewTicketId(ticket.id)}
                         >
                           Review
@@ -257,7 +251,13 @@ export function CreateTicketPage({ externalOpenTicketId, onExternalOpenHandled }
               <div><dt>Type</dt><dd className="capitalize">{reviewTicket.issueType}</dd></div>
               <div><dt>Status</dt><dd><span className={`status-pill status-${statusSlug(reviewTicket.status)}`}>{reviewTicket.status}</span></dd></div>
               <div><dt>Submitted</dt><dd>{new Date(reviewTicket.createdAt).toLocaleString()}</dd></div>
+              {reviewTicket.priority && <div><dt>Priority</dt><dd className="capitalize">{reviewTicket.priority}</dd></div>}
             </dl>
+
+            <div className="modal-description">
+              <p className="eyebrow">YOUR REQUEST</p>
+              <p>{reviewTicket.description}</p>
+            </div>
 
             {reviewTicket.status === 'Rejected' && (
               <div className="modal-description">
@@ -269,9 +269,11 @@ export function CreateTicketPage({ externalOpenTicketId, onExternalOpenHandled }
             {reviewTicket.status !== 'Rejected' && (
               <div className="modal-description">
                 <p className="eyebrow">ASSIGNMENT</p>
-                {reviewTicket.assigneeId ? (
+                {reviewTicket.status === 'Pending Helpdesk Review' ? (
+                  <p>Awaiting Helpdesk review.</p>
+                ) : reviewTicket.assigneeId ? (
                   <p>
-                    Assigned to <strong>{reviewTicket.assigneeId}</strong>
+                    Assigned to <strong>{reviewTicket.assigneeName ?? reviewTicket.assigneeId}</strong>
                     {reviewTicket.expectedDurationHours ? ` \u00b7 Expected duration: ${reviewTicket.expectedDurationHours}h` : ''}
                     {reviewTicket.assignedAt ? ` \u00b7 Assigned on ${new Date(reviewTicket.assignedAt).toLocaleString()}` : ''}
                   </p>
@@ -280,6 +282,10 @@ export function CreateTicketPage({ externalOpenTicketId, onExternalOpenHandled }
                 )}
               </div>
             )}
+
+            <TicketResolutionNote ticket={reviewTicket} />
+            <TicketComments ticket={reviewTicket} />
+            <TicketHistory ticket={reviewTicket} />
           </div>
         </div>
       )}

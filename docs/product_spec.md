@@ -81,8 +81,8 @@ Employees/ Department managers/ IT Team/ HR/ BA/ Finance department/ Procurement
 
 ## 11.Acceptance criteria
 
-- An employee can create a request with required fields and attachments
-- The request is assigned to the correct team or queue
+- An employee can create a request with required fields 
+- The request is assigned to an assignee
 - Helpdesk can approve or reject requests, with an explanation required for rejection
 - The assignee can update status and add comments
 - The system records all actions in an audit log

@@ -1,23 +1,18 @@
-import { BadRequestException, createParamDecorator, ExecutionContext, ForbiddenException } from '@nestjs/common';
+import { createParamDecorator, ExecutionContext, ForbiddenException, UnauthorizedException } from '@nestjs/common';
 import { Request } from 'express';
+import { verifyToken } from '../auth/token';
 import { AuthenticatedUser, UserRole } from './ticket.types';
 
 export const CurrentUser = createParamDecorator((_: unknown, context: ExecutionContext): AuthenticatedUser => {
   const request = context.switchToHttp().getRequest<Request>();
-  const id = request.header('x-user-id');
-  const role = request.header('x-user-role') as UserRole | undefined;
-  const employeeId = request.header('x-user-employee-id') ?? id;
-  const jobTitle = request.header('x-user-job-title') ?? 'Operations Employee';
-  const allowedRoles: UserRole[] = ['employee', 'helpdesk', 'assignee', 'administrator'];
+  const [scheme, token] = (request.header('authorization') ?? '').split(' ');
 
-  if (!id || !role || !allowedRoles.includes(role)) {
-    throw new BadRequestException('x-user-id and a valid x-user-role header are required');
+  const user = scheme === 'Bearer' && token ? verifyToken(token) : null;
+  if (!user) {
+    throw new UnauthorizedException('A valid sign-in session is required');
   }
 
-  (globalThis as typeof globalThis & { __currentEmployeeId?: string }).__currentEmployeeId = employeeId;
-  (globalThis as typeof globalThis & { __currentJobTitle?: string }).__currentJobTitle = jobTitle;
-
-  return { id, role };
+  return user;
 });
 
 export function requireRole(user: AuthenticatedUser, ...roles: UserRole[]): void {

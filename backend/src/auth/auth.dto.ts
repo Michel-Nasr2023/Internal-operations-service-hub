@@ -1,4 +1,4 @@
-import { IsEmail, IsIn, IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsEmail, IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
 
 export class LoginRequestDto {
   @IsEmail()
@@ -29,9 +29,6 @@ export class SignupRequestDto {
   @IsNotEmpty()
   @MaxLength(80)
   lastName!: string;
-
-  @IsIn(['employee', 'helpdesk'])
-  role!: 'employee' | 'helpdesk';
 
   @IsOptional()
   @IsString()

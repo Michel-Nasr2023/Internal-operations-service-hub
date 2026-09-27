@@ -6,7 +6,6 @@ const initialForm: SignupInput = {
   password: '',
   firstName: '',
   lastName: '',
-  role: 'employee',
   jobTitle: '',
 };
 
@@ -48,7 +47,7 @@ export function SignUpPage({ onSignedUp, onBackToLogin }: SignUpPageProps) {
         </div>
         <p className="eyebrow">CREATE ACCOUNT</p>
         <h1>Sign up</h1>
-        <p className="auth-copy">Add a new employee or Helpdesk account. The account ID is assigned automatically.</p>
+        <p className="auth-copy">Create your employee account. The account ID is assigned automatically; Helpdesk access is granted by an administrator.</p>
 
         <form onSubmit={handleSubmit} className="auth-form">
           <div className="field-grid">
@@ -72,19 +71,10 @@ export function SignUpPage({ onSignedUp, onBackToLogin }: SignUpPageProps) {
             <input type="password" value={form.password} onChange={(event) => updateField('password', event.target.value)} placeholder="Choose a password" required />
           </label>
 
-          <div className="field-grid">
-            <label>
-              Role
-              <select value={form.role} onChange={(event) => updateField('role', event.target.value)}>
-                <option value="employee">Employee</option>
-                <option value="helpdesk">Helpdesk</option>
-              </select>
-            </label>
-            <label>
-              Job title
-              <input value={form.jobTitle} onChange={(event) => updateField('jobTitle', event.target.value)} placeholder="e.g. Operations Analyst" />
-            </label>
-          </div>
+          <label>
+            Job title
+            <input value={form.jobTitle} onChange={(event) => updateField('jobTitle', event.target.value)} placeholder="e.g. Operations Analyst" />
+          </label>
 
           {error && <p className="message error" role="alert">{error}</p>}
 

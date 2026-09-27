@@ -1,153 +1,99 @@
 import { useEffect, useRef, useState } from 'react';
-import { getMyTickets, getTickets, Ticket } from '../../api/tickets';
+import { AppNotification, getNotifications, markAllNotificationsRead, markNotificationRead, NotificationKind } from '../../api/notifications';
+import { isSoundMuted, playNotificationChime, setSoundMuted } from './notificationSound';
 
-type BellRole = 'employee' | 'helpdesk';
-type NotificationKind = 'approved' | 'rejected' | 'new-ticket';
+const POLL_INTERVAL_MS = 15000;
 
-interface TicketNotification {
-  id: string;
-  ticketId: string;
-  title: string;
-  kind: NotificationKind;
-  createdAt: string;
-  read: boolean;
-}
+const KIND_LABELS: Record<NotificationKind, string> = {
+  'ticket-submitted': 'New',
+  'ticket-approved': 'Approved',
+  'ticket-rejected': 'Rejected',
+  'ticket-assigned': 'Assigned',
+  'ticket-unclaimed': 'Unclaimed',
+  'ticket-overdue': 'Overdue',
+  'ticket-resolved': 'Resolved',
+  'ticket-comment': 'Comment',
+};
 
-const POLL_INTERVAL_MS = 10000;
-
-function storageKey(prefix: string, userId: string): string {
-  return `internal-ops-${prefix}-${userId}`;
-}
-
-function loadNotifications(userId: string): TicketNotification[] {
-  const raw = localStorage.getItem(storageKey('notifications', userId));
-  return raw ? (JSON.parse(raw) as TicketNotification[]) : [];
-}
-
-function loadKnownStatuses(userId: string): Record<string, string> {
-  const raw = localStorage.getItem(storageKey('ticket-statuses', userId));
-  return raw ? (JSON.parse(raw) as Record<string, string>) : {};
-}
-
-function loadSeenIds(userId: string): string[] {
-  const raw = localStorage.getItem(storageKey('seen-ticket-ids', userId));
-  return raw ? (JSON.parse(raw) as string[]) : [];
-}
-
-function kindLabel(kind: NotificationKind): string {
-  if (kind === 'approved') return 'Approved';
-  if (kind === 'rejected') return 'Rejected';
-  return 'New';
-}
-
-function kindSlug(kind: NotificationKind): string {
-  if (kind === 'new-ticket') return 'pending-helpdesk-review';
-  return kind;
-}
+// Reuses the ticket status pill colours.
+const KIND_PILL_CLASSES: Record<NotificationKind, string> = {
+  'ticket-submitted': 'status-pending-helpdesk-review',
+  'ticket-approved': 'status-approved',
+  'ticket-rejected': 'status-rejected',
+  'ticket-assigned': 'status-assigned',
+  'ticket-unclaimed': 'status-pending-helpdesk-review',
+  'ticket-overdue': 'status-rejected',
+  'ticket-resolved': 'status-resolved',
+  'ticket-comment': 'status-in-progress',
+};
 
 interface NotificationBellProps {
-  userId: string;
-  role: BellRole;
-  onSelectTicket: (ticketId: string) => void;
+  onSelectTicket: (ticketId: string, kind: NotificationKind) => void;
 }
 
-export function NotificationBell({ userId, role, onSelectTicket }: NotificationBellProps) {
-  const [notifications, setNotifications] = useState<TicketNotification[]>(() => loadNotifications(userId));
+export function NotificationBell({ onSelectTicket }: NotificationBellProps) {
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [isOpen, setIsOpen] = useState(false);
-  const knownStatuses = useRef<Record<string, string> | null>(null);
-  const seenIds = useRef<Set<string> | null>(null);
-  const isFreshSession = useRef<boolean | null>(null);
-
-  if (knownStatuses.current === null) knownStatuses.current = loadKnownStatuses(userId);
-  if (seenIds.current === null) seenIds.current = new Set(loadSeenIds(userId));
-  if (isFreshSession.current === null) isFreshSession.current = seenIds.current.size === 0;
-
-  useEffect(() => {
-    localStorage.setItem(storageKey('notifications', userId), JSON.stringify(notifications));
-  }, [notifications, userId]);
+  const [isMuted, setIsMuted] = useState(isSoundMuted);
+  const [isRinging, setIsRinging] = useState(false);
+  // IDs already seen; null until the first load so existing notifications don't chime on sign-in.
+  const knownIds = useRef<Set<string> | null>(null);
+  const isMutedRef = useRef(isMuted);
+  isMutedRef.current = isMuted;
 
   useEffect(() => {
     async function poll() {
-      let tickets: Ticket[];
       try {
-        tickets = role === 'helpdesk' ? await getTickets() : await getMyTickets();
+        const latest = await getNotifications();
+        const hasNewUnread = knownIds.current !== null && latest.some((notification) => !notification.readAt && !knownIds.current?.has(notification.id));
+        knownIds.current = new Set(latest.map((notification) => notification.id));
+        setNotifications(latest);
+
+        if (hasNewUnread) {
+          setIsRinging(true);
+          if (!isMutedRef.current) playNotificationChime();
+        }
       } catch {
-        return;
-      }
-
-      const newNotifications: TicketNotification[] = [];
-
-      if (role === 'helpdesk') {
-        const seen = seenIds.current ?? new Set<string>();
-        for (const ticket of tickets) {
-          if (!seen.has(ticket.id)) {
-            if (!isFreshSession.current) {
-              newNotifications.push({
-                id: `${ticket.id}-new`,
-                ticketId: ticket.id,
-                title: ticket.title,
-                kind: 'new-ticket',
-                createdAt: new Date().toISOString(),
-                read: false,
-              });
-            }
-            seen.add(ticket.id);
-          }
-        }
-        isFreshSession.current = false;
-        seenIds.current = seen;
-        localStorage.setItem(storageKey('seen-ticket-ids', userId), JSON.stringify([...seen]));
-      } else {
-        const statuses = knownStatuses.current ?? {};
-        for (const ticket of tickets) {
-          const previousStatus = statuses[ticket.id];
-          if (previousStatus === 'Pending Helpdesk Review' && (ticket.status === 'Approved' || ticket.status === 'Rejected')) {
-            newNotifications.push({
-              id: `${ticket.id}-${ticket.status}`,
-              ticketId: ticket.id,
-              title: ticket.title,
-              kind: ticket.status === 'Approved' ? 'approved' : 'rejected',
-              createdAt: new Date().toISOString(),
-              read: false,
-            });
-          }
-          statuses[ticket.id] = ticket.status;
-        }
-        knownStatuses.current = statuses;
-        localStorage.setItem(storageKey('ticket-statuses', userId), JSON.stringify(statuses));
-      }
-
-      if (newNotifications.length > 0) {
-        setNotifications((current) => {
-          const existingIds = new Set(current.map((notification) => notification.id));
-          const filtered = newNotifications.filter((notification) => !existingIds.has(notification.id));
-          return [...filtered, ...current];
-        });
+        // Keep showing the last list; the next poll will retry.
       }
     }
 
     void poll();
     const interval = setInterval(() => void poll(), POLL_INTERVAL_MS);
     return () => clearInterval(interval);
-  }, [userId, role]);
+  }, []);
 
-  const unreadCount = notifications.filter((notification) => !notification.read).length;
+  const unreadCount = notifications.filter((notification) => !notification.readAt).length;
 
-  function markAllRead() {
-    setNotifications((current) => current.map((notification) => ({ ...notification, read: true })));
+  function toggleMute() {
+    const next = !isMuted;
+    setIsMuted(next);
+    setSoundMuted(next);
+    if (!next) playNotificationChime();
   }
 
-  function selectNotification(notification: TicketNotification) {
-    setNotifications((current) => current.map((item) => (item.id === notification.id ? { ...item, read: true } : item)));
+  function markAllRead() {
+    const readAt = new Date().toISOString();
+    setNotifications((current) => current.map((notification) => ({ ...notification, readAt: notification.readAt ?? readAt })));
+    void markAllNotificationsRead();
+  }
+
+  function selectNotification(notification: AppNotification) {
+    if (!notification.readAt) {
+      const readAt = new Date().toISOString();
+      setNotifications((current) => current.map((item) => (item.id === notification.id ? { ...item, readAt } : item)));
+      void markNotificationRead(notification.id);
+    }
     setIsOpen(false);
-    onSelectTicket(notification.ticketId);
+    onSelectTicket(notification.ticketId, notification.kind);
   }
 
   return (
     <div className="notification-bell">
       <button
         type="button"
-        className="bell-button"
+        className={isRinging ? 'bell-button bell-button-ringing' : 'bell-button'}
+        onAnimationEnd={() => setIsRinging(false)}
         aria-label={unreadCount > 0 ? `Notifications, ${unreadCount} unread` : 'Notifications'}
         onClick={() => setIsOpen((current) => !current)}
       >
@@ -159,7 +105,18 @@ export function NotificationBell({ userId, role, onSelectTicket }: NotificationB
         <div className="notification-panel">
           <div className="notification-panel-header">
             <span>Notifications</span>
-            {unreadCount > 0 && <button type="button" className="mark-all-read" onClick={markAllRead}>Mark all read</button>}
+            <div className="notification-panel-actions">
+              <button
+                type="button"
+                className="mark-all-read"
+                onClick={toggleMute}
+                aria-pressed={isMuted}
+                title={isMuted ? 'Turn notification sound on' : 'Turn notification sound off'}
+              >
+                {isMuted ? '🔕 Sound off' : '🔊 Sound on'}
+              </button>
+              {unreadCount > 0 && <button type="button" className="mark-all-read" onClick={markAllRead}>Mark all read</button>}
+            </div>
           </div>
 
           {notifications.length === 0 && <p className="empty-state">No notifications yet.</p>}
@@ -169,12 +126,13 @@ export function NotificationBell({ userId, role, onSelectTicket }: NotificationB
               {notifications.map((notification) => (
                 <li
                   key={notification.id}
-                  className={notification.read ? 'notification-item notification-item-read' : 'notification-item'}
+                  className={notification.readAt ? 'notification-item notification-item-read' : 'notification-item'}
                   onClick={() => selectNotification(notification)}
                 >
-                  <span className={`status-pill status-${kindSlug(notification.kind)}`}>{kindLabel(notification.kind)}</span>
+                  <span className={`status-pill ${KIND_PILL_CLASSES[notification.kind] ?? ''}`}>{KIND_LABELS[notification.kind] ?? notification.kind}</span>
                   <div>
                     <strong>{notification.title}</strong>
+                    <p className="notification-message">{notification.message}</p>
                     <small>Ticket {notification.ticketId.slice(0, 8)} · {new Date(notification.createdAt).toLocaleString()}</small>
                   </div>
                 </li>

@@ -22,18 +22,47 @@ export interface AuthenticatedUser {
   role: UserRole;
 }
 
-export type AiIssueType = 'hardware' | 'software' | 'network' | 'access';
-export type AiSeverity = 'low' | 'medium' | 'high' | 'urgent';
+export const TEAM_IDS = ['it', 'facilities', 'finance'] as const;
 
-export interface StructuredAiResult {
-  employeeId: string;
-  jobTitle: string;
-  freeText: string;
-  productName: string;
+export const AI_ISSUE_TYPES = ['hardware', 'software', 'network', 'access'] as const;
+export const AI_SEVERITIES = ['low', 'medium', 'high', 'urgent'] as const;
+export type AiIssueType = (typeof AI_ISSUE_TYPES)[number];
+export type AiSeverity = (typeof AI_SEVERITIES)[number];
+
+// AI intake analysis attached to a ticket, written for the Helpdesk reviewer. It runs in the background after
+// submission, so a ticket's analysis is first `pending`, then either the model's result or a recorded failure.
+export interface TicketAiResult {
+  source: 'ai';
+  model?: string;
+  summary: string;
+  clarifiedDescription: string;
   issueType: AiIssueType;
   severity: AiSeverity;
   recommendedAction: string;
+  missingInformation: string[];
+  // The model could not tell what the problem is and suggests clarifying with the employee.
+  isUnclear?: boolean;
+  attempts?: number;
+  generatedAt: string;
 }
+
+export type AiFailureCode = 'not-configured' | 'timeout' | 'rate-limited' | 'provider-error' | 'network' | 'invalid-response';
+
+export interface TicketAiFailure {
+  source: 'failed';
+  failureCode: AiFailureCode;
+  // Plain-language reason shown to Helpdesk.
+  failureReason: string;
+  attempts: number;
+  generatedAt: string;
+}
+
+export interface TicketAiPending {
+  source: 'pending';
+  requestedAt: string;
+}
+
+export type TicketAiAnalysis = TicketAiResult | TicketAiFailure | TicketAiPending;
 
 export interface AuditEvent {
   id: string;
@@ -54,7 +83,7 @@ export interface Ticket {
   project: string;
   title: string;
   description: string;
-  aiResult?: StructuredAiResult;
+  aiResult?: TicketAiAnalysis;
   priority?: Priority;
   status: TicketStatus;
   assigneeId?: string;
@@ -69,4 +98,22 @@ export interface Ticket {
   updatedAt: string;
   version: number;
   auditEvents: AuditEvent[];
+}
+
+export interface TicketComment {
+  id: string;
+  ticketId: string;
+  authorId: string;
+  authorName?: string;
+  authorRole?: UserRole;
+  body: string;
+  createdAt: string;
+}
+
+// Ticket as returned by the API, with display names resolved from the user directory.
+export interface TicketView extends Ticket {
+  requesterName?: string;
+  assigneeName?: string;
+  // When the requesting user last opened this ticket's details (only set on list responses).
+  viewedAt?: string;
 }

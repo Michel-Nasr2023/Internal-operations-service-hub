@@ -1,6 +1,12 @@
-import { useEffect, useState } from 'react';
-import { approveTicket, assignTicket, getTickets, rejectTicket, Ticket } from '../../api/tickets';
+import { useCallback, useEffect, useState } from 'react';
+import { approveTicket, assignTicket, getTickets, markTicketViewed, rejectTicket, Ticket } from '../../api/tickets';
 import { DirectoryUser, listAssignableEmployees } from '../../api/auth';
+import { TicketAiAnalysisPanel } from './TicketAiAnalysisPanel';
+import { TicketComments } from '../tickets/TicketComments';
+import { TicketHistory } from '../tickets/TicketHistory';
+import { TicketResolutionNote } from '../tickets/TicketResolutionNote';
+import { SortOrder, SortSelect, sortTickets } from '../tickets/ticketSort';
+import { computeWorkload, LOAD_LABELS } from './workload';
 
 const TEAM_LABELS: Record<string, string> = {
   it: 'IT Operations',
@@ -31,6 +37,15 @@ function statusSlug(status: string): string {
   return status.toLowerCase().replace(/\s+/g, '-');
 }
 
+// New for this Helpdesk user until they open it with Review; closed tickets are never "new".
+function isUnseen(ticket: Ticket): boolean {
+  return !ticket.viewedAt && ticket.status !== 'Resolved' && ticket.status !== 'Rejected';
+}
+
+function isOverdue(ticket: Ticket, now: number): boolean {
+  return ticket.status === 'In Progress' && !!ticket.dueAt && new Date(ticket.dueAt).getTime() <= now;
+}
+
 function displayStatus(status: string): string {
   return status === 'Pending Helpdesk Review' ? 'Pending' : status;
 }
@@ -54,6 +69,7 @@ export function HelpdeskDashboardPage({ externalOpenTicketId, onExternalOpenHand
   const [statusFilter, setStatusFilter] = useState('all');
   const [teamFilter, setTeamFilter] = useState('all');
   const [priorityFilter, setPriorityFilter] = useState('all');
+  const [sortOrder, setSortOrder] = useState<SortOrder>('newest');
   const [searchTerm, setSearchTerm] = useState('');
 
   async function loadEmployees() {
@@ -93,14 +109,25 @@ export function HelpdeskDashboardPage({ externalOpenTicketId, onExternalOpenHand
   }, [externalOpenTicketId]);
 
   function getDraft(ticketId: string): RowDraft {
-    return drafts[ticketId] ?? defaultDraft;
+    // Pre-select the AI-suggested severity as the priority; Helpdesk can still change it.
+    const analysis = tickets.find((ticket) => ticket.id === ticketId)?.aiResult;
+    const suggestedPriority = analysis?.source === 'ai' ? analysis.severity : undefined;
+    return drafts[ticketId] ?? { ...defaultDraft, priority: suggestedPriority ?? defaultDraft.priority };
   }
 
   function updateDraft(ticketId: string, patch: Partial<RowDraft>) {
     setDrafts((current) => ({ ...current, [ticketId]: { ...getDraft(ticketId), ...patch } }));
   }
 
+  // Merges a refreshed ticket (finished or restarted AI analysis) into the queue, keeping this user's view state.
+  const replaceTicket = useCallback((updated: Ticket) => {
+    setTickets((current) => current.map((ticket) => (ticket.id === updated.id ? { ...updated, viewedAt: ticket.viewedAt } : ticket)));
+  }, []);
+
   function openReview(ticketId: string) {
+    const viewedAt = new Date().toISOString();
+    setTickets((current) => current.map((ticket) => (ticket.id === ticketId ? { ...ticket, viewedAt } : ticket)));
+    void markTicketViewed(ticketId);
     setReviewTicketId(ticketId);
     setActionStage('choose');
     setModalError('');
@@ -196,19 +223,30 @@ export function HelpdeskDashboardPage({ externalOpenTicketId, onExternalOpenHand
     }
   }
 
+  const newCount = tickets.filter(isUnseen).length;
   const pendingCount = tickets.filter((ticket) => ticket.status === 'Pending Helpdesk Review').length;
   const approvedCount = tickets.filter((ticket) => ticket.status === 'Approved').length;
   const openCount = tickets.filter((ticket) => ticket.status !== 'Resolved' && ticket.status !== 'Rejected').length;
+  const inProgressCount = tickets.filter((ticket) => ticket.status === 'In Progress').length;
+  const now = Date.now();
+  const overdueCount = tickets.filter((ticket) => isOverdue(ticket, now)).length;
   const reviewTicket = tickets.find((ticket) => ticket.id === reviewTicketId) ?? null;
+  // Least-loaded people first, with their current load in the label, so Helpdesk can spread work fairly.
+  const assigneeOptions = computeWorkload(employees, tickets, now)
+    .sort((a, b) => a.active - b.active || `${a.employee.firstName} ${a.employee.lastName}`.localeCompare(`${b.employee.firstName} ${b.employee.lastName}`))
+    .map((row) => ({
+      id: row.employee.id,
+      label: `${row.employee.firstName} ${row.employee.lastName} — ${row.active} active${row.overdue > 0 ? `, ${row.overdue} overdue` : ''}${row.level === 'high' ? ` (${LOAD_LABELS.high})` : ''}`,
+    }));
 
-  const filteredTickets = tickets.filter((ticket) => {
+  const filteredTickets = sortTickets(tickets, sortOrder).filter((ticket) => {
     if (statusFilter !== 'all' && ticket.status !== statusFilter) return false;
     if (teamFilter !== 'all' && ticket.teamId !== teamFilter) return false;
     if (priorityFilter !== 'all' && ticket.priority !== priorityFilter) return false;
 
     if (searchTerm.trim()) {
       const term = searchTerm.trim().toLowerCase();
-      const haystack = `${ticket.title} ${ticket.description} ${ticket.requesterId} ${ticket.id}`.toLowerCase();
+      const haystack = `${ticket.title} ${ticket.description} ${ticket.aiResult?.clarifiedDescription ?? ''} ${ticket.requesterName ?? ''} ${ticket.requesterId} ${ticket.id}`.toLowerCase();
       if (!haystack.includes(term)) return false;
     }
 
@@ -225,15 +263,19 @@ export function HelpdeskDashboardPage({ externalOpenTicketId, onExternalOpenHand
           <div className="card-heading-title">
             <h2 id="queue-title">Tickets queue</h2>
             <div className="queue-stats">
+              <span className={newCount > 0 ? 'queue-stat-new' : undefined}><strong>{newCount}</strong> new</span>
               <span><strong>{pendingCount}</strong> awaiting review</span>
               <span><strong>{approvedCount}</strong> approved, unassigned</span>
               <span><strong>{openCount}</strong> open</span>
+              <span><strong>{inProgressCount}</strong> in progress</span>
+              <span className={overdueCount > 0 ? 'queue-stat-alert' : undefined}><strong>{overdueCount}</strong> overdue</span>
             </div>
           </div>
           <button className="refresh-button" type="button" onClick={() => void loadTickets()} disabled={isLoading} aria-label="Refresh ticket queue" title="Refresh ticket queue">↻</button>
         </div>
 
         <div className="filter-bar">
+          <SortSelect value={sortOrder} onChange={setSortOrder} />
           <label>
             Status
             <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
@@ -263,7 +305,7 @@ export function HelpdeskDashboardPage({ externalOpenTicketId, onExternalOpenHand
           </label>
           <label className="filter-search">
             Search
-            <input value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} placeholder="Search by title, requester, or ticket ID" />
+            <input value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} placeholder="Search by title, requester name, or ticket ID" />
           </label>
         </div>
 
@@ -294,19 +336,25 @@ export function HelpdeskDashboardPage({ externalOpenTicketId, onExternalOpenHand
               </thead>
               <tbody>
                 {filteredTickets.map((ticket) => (
-                  <tr key={ticket.id}>
-                    <td className="mono">{ticket.id.slice(0, 8)}</td>
+                  <tr key={ticket.id} className={isUnseen(ticket) ? 'ticket-row-new' : undefined}>
+                    <td className="mono">
+                      {ticket.id.slice(0, 8)}
+                      {isUnseen(ticket) && <span className="new-badge">New</span>}
+                    </td>
                     <td>{ticket.title}</td>
-                    <td className="description-cell" title={ticket.description}>{ticket.description}</td>
-                    <td className="mono">{ticket.requesterId}</td>
+                    <td className="description-cell" title={ticket.aiResult?.clarifiedDescription ?? ticket.description}>{ticket.aiResult?.clarifiedDescription ?? ticket.description}</td>
+                    <td>{ticket.requesterName ?? ticket.requesterId}</td>
                     <td>{TEAM_LABELS[ticket.teamId] ?? ticket.teamId}</td>
                     <td className="capitalize">{ticket.issueType}</td>
                     <td>{ticket.project}</td>
-                    <td><span className={`status-pill status-${statusSlug(ticket.status)}`}>{displayStatus(ticket.status)}</span></td>
+                    <td>
+                      <span className={`status-pill status-${statusSlug(ticket.status)}`}>{displayStatus(ticket.status)}</span>
+                      {isOverdue(ticket, now) && <span className="status-pill status-rejected overdue-pill">Overdue</span>}
+                    </td>
                     <td className="capitalize">{ticket.priority ?? '—'}</td>
                     <td>{new Date(ticket.createdAt).toLocaleDateString()}</td>
                     <td>
-                      <button type="button" className="review-button" onClick={() => openReview(ticket.id)}>Review</button>
+                      <button type="button" className="review-button review-button-outline" onClick={() => openReview(ticket.id)}>Review</button>
                     </td>
                   </tr>
                 ))}
@@ -328,18 +376,18 @@ export function HelpdeskDashboardPage({ externalOpenTicketId, onExternalOpenHand
             </div>
 
             <dl className="modal-meta">
-              <div><dt>Requester</dt><dd className="mono">{reviewTicket.requesterId}</dd></div>
+              <div><dt>Requester</dt><dd>{reviewTicket.requesterName ?? reviewTicket.requesterId}</dd></div>
               <div><dt>Team</dt><dd>{TEAM_LABELS[reviewTicket.teamId] ?? reviewTicket.teamId}</dd></div>
               <div><dt>Type</dt><dd className="capitalize">{reviewTicket.issueType}</dd></div>
               <div><dt>Status</dt><dd><span className={`status-pill status-${statusSlug(reviewTicket.status)}`}>{reviewTicket.status}</span></dd></div>
               <div><dt>Priority</dt><dd className="capitalize">{reviewTicket.priority ?? '—'}</dd></div>
               <div><dt>Submitted</dt><dd>{new Date(reviewTicket.createdAt).toLocaleString()}</dd></div>
+              {reviewTicket.assigneeId && <div><dt>Assignee</dt><dd>{reviewTicket.assigneeName ?? reviewTicket.assigneeId}</dd></div>}
+              {reviewTicket.dueAt && <div><dt>Due</dt><dd>{new Date(reviewTicket.dueAt).toLocaleString()}{isOverdue(reviewTicket, now) ? ' · Overdue' : ''}</dd></div>}
             </dl>
 
-            <div className="modal-description">
-              <p className="eyebrow">DESCRIPTION</p>
-              <p>{reviewTicket.description}</p>
-            </div>
+            <TicketAiAnalysisPanel ticket={reviewTicket} onTicketUpdated={replaceTicket} canRetry />
+            <TicketResolutionNote ticket={reviewTicket} />
 
             {modalError && <p className="message error" role="alert">{modalError}</p>}
 
@@ -373,8 +421,8 @@ export function HelpdeskDashboardPage({ externalOpenTicketId, onExternalOpenHand
                       onChange={(event) => updateDraft(reviewTicket.id, { assigneeId: event.target.value })}
                     >
                       <option value="">Select an employee</option>
-                      {employees.map((employee) => (
-                        <option key={employee.id} value={employee.id}>{employee.firstName} {employee.lastName}</option>
+                      {assigneeOptions.map((option) => (
+                        <option key={option.id} value={option.id}>{option.label}</option>
                       ))}
                     </select>
                   </label>
@@ -418,8 +466,8 @@ export function HelpdeskDashboardPage({ externalOpenTicketId, onExternalOpenHand
                       onChange={(event) => updateDraft(reviewTicket.id, { assigneeId: event.target.value })}
                     >
                       <option value="">Select an employee</option>
-                      {employees.map((employee) => (
-                        <option key={employee.id} value={employee.id}>{employee.firstName} {employee.lastName}</option>
+                      {assigneeOptions.map((option) => (
+                        <option key={option.id} value={option.id}>{option.label}</option>
                       ))}
                     </select>
                   </label>
@@ -440,6 +488,9 @@ export function HelpdeskDashboardPage({ externalOpenTicketId, onExternalOpenHand
             {reviewTicket.status !== 'Pending Helpdesk Review' && reviewTicket.status !== 'Approved' && (
               <p className="empty-state">No action is required for this ticket.</p>
             )}
+
+            <TicketComments ticket={reviewTicket} />
+            <TicketHistory ticket={reviewTicket} />
           </div>
         </div>
       )}

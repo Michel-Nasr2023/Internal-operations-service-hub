@@ -10,10 +10,10 @@ frontend/    React employee interface
 docs/        Product, architecture, and data-model decisions
 ```
 
-The current workflow is employee ticket creation with AI triage:
+The current workflow is employee ticket creation with AI intake analysis for Helpdesk:
 
 ```text
-React form -> POST /api/tickets -> NestJS validation and authorization -> Requesty AI call -> backend validation -> SQLite -> AI result shown under the form
+React form -> POST /api/tickets -> NestJS validation and authorization -> Requesty AI call -> backend validation -> SQLite -> AI analysis shown to Helpdesk in the review panel
 ```
 
 ## Run Locally
@@ -24,7 +24,10 @@ Create the runtime config file at `backend/.env` with the Requesty settings befo
 RQSTY_API_KEY=your_key_here
 RQSTY_API_URL=https://router.requesty.ai/v1/chat/completions
 RQSTY_MODEL=nvidia/nemotron-3-super-120b-a12b
+AUTH_SECRET=a_long_random_string
 ```
+
+`AUTH_SECRET` signs session tokens. If it is missing, a temporary secret is generated and everyone is signed out whenever the API restarts.
 
 Install dependencies once in each package:
 
@@ -42,15 +45,25 @@ npm run frontend
 
 The API runs at `http://localhost:3000/api` and the frontend runs at the Vite URL shown in the terminal. SQLite stores data in `backend/data/tickets.sqlite`.
 
+### Accounts and roles
+
+Public sign-up always creates an **Employee** account. To give someone Helpdesk access, have them sign up first, then run from the project root:
+
+```text
+npm run user:role -- jane.doe@company.com helpdesk
+```
+
+Use `employee` instead of `helpdesk` to remove the access. The person must sign out and back in for the change to apply. A default Helpdesk account (`helpdesk@company.com`) is seeded on first start.
+
 See [Week 3 full-stack delivery](docs/week3-full-stack-delivery.md) for the original API contract, workflow tests, and build commands.
 See [Week 4 production AI integration](docs/week4-production-ai.md) for the Requesty integration, AI output validation, and the direct UI evaluation cases.
 
 ## What It Does
 
 - Allows every employee to submit requests with required details.
-- Calls a Requesty AI model during ticket submission to classify the issue and recommend an action.
-- Validates the AI response before saving it with the ticket.
-- Shows the structured AI result beneath the form for visibility.
+- Saves the ticket immediately, then has a Requesty AI model analyse it in the background. The model rewrites the employee's description into a clear summary for Helpdesk, classifies the issue type and severity, recommends a first step, and lists questions to ask the employee. Vague tickets are flagged as "Unclear request" with the questions needed to clarify them.
+- Validates the AI response before saving it. Busy or overloaded provider responses (429/5xx) and unusable answers are retried up to 3 times. If the AI still cannot answer, the ticket is marked "AI analysis failed" with the reason, and Helpdesk can retry it; no substitute analysis is invented.
+- Shows the AI analysis, alongside the employee's original text, only to Helpdesk when reviewing the ticket. The AI-suggested severity is pre-selected as the priority.
 - Routes requests to the appropriate operational team based on project and issue type.
 - Lets Helpdesk review requests, set priorities, and approve or reject them.
 - Supports Helpdesk assignment, assignee claims, and progress updates.

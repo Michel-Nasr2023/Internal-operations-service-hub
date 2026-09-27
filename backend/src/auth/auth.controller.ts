@@ -18,6 +18,13 @@ export class AuthController {
     return this.authService.signup(dto);
   }
 
+  // Tokens are stateless, so sign-out is enforced client-side; this records it in the audit log.
+  @Post('logout')
+  async logout(@CurrentUser() user: AuthenticatedUser) {
+    await this.authService.logout(user);
+    return { ok: true };
+  }
+
   @Get('users')
   async listUsers(@Query('role') role: UserRole | undefined, @CurrentUser() user: AuthenticatedUser) {
     requireRole(user, 'helpdesk');

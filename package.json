@@ -2,6 +2,7 @@
   "name": "internal-operations-service-hub",
   "private": true,
   "scripts": {
+    "user:role": "npm --prefix backend run user:role --",
     "backend": "npm --prefix backend run start:dev",
     "backend:build": "npm --prefix backend run build",
     "backend:test": "npm --prefix backend test",

@@ -8,6 +8,7 @@ export interface AuthUser {
   lastName: string;
   jobTitle?: string;
   employeeId?: string;
+  token: string;
 }
 
 export interface LoginCredentials {
@@ -20,7 +21,6 @@ export interface SignupInput {
   password: string;
   firstName: string;
   lastName: string;
-  role: 'employee' | 'helpdesk';
   jobTitle?: string;
 }
 
@@ -34,6 +34,7 @@ export interface DirectoryUser {
 
 const apiUrl = import.meta.env.VITE_API_URL ?? 'http://localhost:3000/api';
 const AUTH_STORAGE_KEY = 'internal-ops-user';
+export const SESSION_EXPIRED_EVENT = 'internal-ops-session-expired';
 
 export function loadStoredUser(): AuthUser | null {
   const raw = localStorage.getItem(AUTH_STORAGE_KEY);
@@ -43,7 +44,7 @@ export function loadStoredUser(): AuthUser | null {
 
   try {
     const parsed = JSON.parse(raw) as AuthUser;
-    if (!parsed?.id || !parsed?.role || !parsed?.email) {
+    if (!parsed?.id || !parsed?.role || !parsed?.email || !parsed?.token) {
       return null;
     }
     return parsed;
@@ -67,12 +68,23 @@ export function getAuthHeaders(): Record<string, string> {
     return {};
   }
 
-  return {
-    'x-user-id': user.id,
-    'x-user-role': user.role,
-    'x-user-employee-id': user.employeeId ?? user.id,
-    'x-user-job-title': user.jobTitle ?? 'Operations Employee',
-  };
+  return { Authorization: `Bearer ${user.token}` };
+}
+
+// Adds the session token and signs the user out when the backend rejects it (expired or invalid).
+export async function authFetch(url: string, init: RequestInit = {}): Promise<Response> {
+  const response = await fetch(url, { ...init, headers: { ...init.headers, ...getAuthHeaders() } });
+
+  if (response.status === 401) {
+    clearStoredUser();
+    window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT));
+  }
+
+  return response;
+}
+
+export async function logoutUser(): Promise<void> {
+  await fetch(`${apiUrl}/auth/logout`, { method: 'POST', headers: getAuthHeaders() }).catch(() => undefined);
 }
 
 export async function loginUser(credentials: LoginCredentials): Promise<AuthUser> {
@@ -106,7 +118,7 @@ export async function signupUser(input: SignupInput): Promise<AuthUser> {
 }
 
 export async function listAssignableEmployees(): Promise<DirectoryUser[]> {
-  const response = await fetch(`${apiUrl}/auth/users?role=employee`, { headers: getAuthHeaders() });
+  const response = await authFetch(`${apiUrl}/auth/users?role=employee`);
 
   if (!response.ok) {
     const error = await response.json().catch(() => null);

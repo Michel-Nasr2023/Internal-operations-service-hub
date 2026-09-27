@@ -1,10 +1,14 @@
-import { useState } from 'react';
-import { AuthUser, clearStoredUser, loginUser, saveStoredUser } from './api/auth';
+import { useEffect, useState } from 'react';
+import { AuthUser, clearStoredUser, loadStoredUser, loginUser, logoutUser, saveStoredUser, SESSION_EXPIRED_EVENT } from './api/auth';
 import { CreateTicketPage } from './features/tickets/CreateTicketPage';
 import { AssignedTicketsPage } from './features/tickets/AssignedTicketsPage';
 import { HelpdeskDashboardPage } from './features/helpdesk/HelpdeskDashboardPage';
+import { TeamWorkloadPage } from './features/helpdesk/TeamWorkloadPage';
+import { ActivityLogPage } from './features/helpdesk/ActivityLogPage';
 import { NotificationBell } from './features/notifications/NotificationBell';
 import { SignUpPage } from './features/auth/SignUpPage';
+import { getMyTickets } from './api/tickets';
+import { NotificationKind } from './api/notifications';
 
 interface LoginFormState {
   email: string;
@@ -19,14 +23,27 @@ const initialForm: LoginFormState = {
 };
 
 export function App() {
-  const [user, setUser] = useState<AuthUser | null>(null);
+  const [user, setUser] = useState<AuthUser | null>(() => loadStoredUser());
   const [authView, setAuthView] = useState<'login' | 'signup'>('login');
   const [employeeTab, setEmployeeTab] = useState<'requests' | 'tasks'>('requests');
+  const [helpdeskTab, setHelpdeskTab] = useState<'queue' | 'workload' | 'activity'>('queue');
   const [pendingTicketId, setPendingTicketId] = useState<string | null>(null);
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
   const [form, setForm] = useState<LoginFormState>(initialForm);
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    function handleSessionExpired() {
+      setUser(null);
+      setAuthView('login');
+      setIsLogoutModalOpen(false);
+      setError('Your session has expired. Please sign in again.');
+    }
+
+    window.addEventListener(SESSION_EXPIRED_EVENT, handleSessionExpired);
+    return () => window.removeEventListener(SESSION_EXPIRED_EVENT, handleSessionExpired);
+  }, []);
 
   async function handleLogin(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -49,10 +66,24 @@ export function App() {
   }
 
   function confirmLogout() {
+    // Sent before the session is cleared so the sign-out is attributed to this user in the audit log.
+    void logoutUser();
     clearStoredUser();
     setUser(null);
     setAuthView('login');
     setIsLogoutModalOpen(false);
+  }
+
+  // Assignment notifications, and comments on tickets assigned to this employee, open My tasks;
+  // everything else opens the ticket in My tickets.
+  async function openEmployeeTicket(ticketId: string, kind: NotificationKind) {
+    let tab: 'requests' | 'tasks' = kind === 'ticket-assigned' ? 'tasks' : 'requests';
+    if (kind === 'ticket-comment' && user) {
+      const ticket = (await getMyTickets().catch(() => [])).find((item) => item.id === ticketId);
+      if (ticket && ticket.requesterId !== user.id && ticket.assigneeId === user.id) tab = 'tasks';
+    }
+    setEmployeeTab(tab);
+    setPendingTicketId(ticketId);
   }
 
   function handleSignedUp(signedUpUser: AuthUser) {
@@ -146,14 +177,26 @@ export function App() {
             </div>
           </div>
           <div className="topbar-actions">
-            <NotificationBell userId={user.id} role="helpdesk" onSelectTicket={(ticketId) => setPendingTicketId(ticketId)} />
+            <NotificationBell onSelectTicket={(ticketId) => { setHelpdeskTab('queue'); setPendingTicketId(ticketId); }} />
             <span className="user-chip">{user.firstName} {user.lastName} · Helpdesk</span>
             <button type="button" className="logout-button" onClick={handleLogout}>Log out</button>
           </div>
         </header>
 
+        <nav className="tab-switch">
+          <button type="button" className={helpdeskTab === 'queue' ? 'tab-button tab-button-active' : 'tab-button'} onClick={() => setHelpdeskTab('queue')}>Tickets queue</button>
+          <button type="button" className={helpdeskTab === 'workload' ? 'tab-button tab-button-active' : 'tab-button'} onClick={() => setHelpdeskTab('workload')}>Team workload</button>
+          <button type="button" className={helpdeskTab === 'activity' ? 'tab-button tab-button-active' : 'tab-button'} onClick={() => setHelpdeskTab('activity')}>Activity log</button>
+        </nav>
+
         <div className="employee-layout">
-          <HelpdeskDashboardPage externalOpenTicketId={pendingTicketId} onExternalOpenHandled={() => setPendingTicketId(null)} />
+          {helpdeskTab === 'queue' ? (
+            <HelpdeskDashboardPage externalOpenTicketId={pendingTicketId} onExternalOpenHandled={() => setPendingTicketId(null)} />
+          ) : helpdeskTab === 'workload' ? (
+            <TeamWorkloadPage />
+          ) : (
+            <ActivityLogPage />
+          )}
         </div>
         {logoutModal}
       </main>
@@ -171,7 +214,7 @@ export function App() {
           </div>
         </div>
         <div className="topbar-actions">
-          <NotificationBell userId={user.id} role="employee" onSelectTicket={(ticketId) => { setEmployeeTab('requests'); setPendingTicketId(ticketId); }} />
+          <NotificationBell onSelectTicket={(ticketId, kind) => void openEmployeeTicket(ticketId, kind)} />
           <span className="user-chip">{user.firstName} {user.lastName} · {user.jobTitle ?? 'Employee'}</span>
           <button type="button" className="logout-button" onClick={handleLogout}>Log out</button>
         </div>
@@ -184,9 +227,9 @@ export function App() {
 
       <div className="employee-layout">
         {employeeTab === 'requests' ? (
-          <CreateTicketPage externalOpenTicketId={pendingTicketId} onExternalOpenHandled={() => setPendingTicketId(null)} />
+          <CreateTicketPage userId={user.id} externalOpenTicketId={pendingTicketId} onExternalOpenHandled={() => setPendingTicketId(null)} />
         ) : (
-          <AssignedTicketsPage userId={user.id} />
+          <AssignedTicketsPage userId={user.id} externalOpenTicketId={pendingTicketId} onExternalOpenHandled={() => setPendingTicketId(null)} />
         )}
       </div>
       {logoutModal}

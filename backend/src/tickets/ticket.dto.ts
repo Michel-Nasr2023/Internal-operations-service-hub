@@ -1,5 +1,5 @@
-import { IsEnum, IsInt, IsNotEmpty, IsOptional, IsPositive, IsString, IsUUID, MaxLength, Min } from 'class-validator';
-import { Priority } from './ticket.types';
+import { IsEnum, IsIn, IsInt, IsNotEmpty, IsOptional, IsPositive, IsString, MaxLength, Min } from 'class-validator';
+import { AI_ISSUE_TYPES, Priority, TEAM_IDS } from './ticket.types';
 
 export class CreateTicketDto {
   @IsNotEmpty()
@@ -12,17 +12,23 @@ export class CreateTicketDto {
   @MaxLength(5000)
   description!: string;
 
-  @IsNotEmpty()
-  @IsString()
+  @IsIn(TEAM_IDS, { message: `teamId must be one of: ${TEAM_IDS.join(', ')}` })
   teamId!: string;
 
-  @IsNotEmpty()
-  @IsString()
+  @IsIn(AI_ISSUE_TYPES, { message: `issueType must be one of: ${AI_ISSUE_TYPES.join(', ')}` })
   issueType!: string;
 
   @IsNotEmpty()
   @IsString()
+  @MaxLength(150)
   project!: string;
+}
+
+export class AddCommentDto {
+  @IsNotEmpty()
+  @IsString()
+  @MaxLength(2000)
+  body!: string;
 }
 
 export class RejectTicketDto {

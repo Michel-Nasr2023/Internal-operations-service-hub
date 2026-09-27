@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { CurrentUser, requireRole } from './auth.decorator';
-import { AssignTicketDto, CreateTicketDto, RejectTicketDto, ResolveTicketDto, SetPriorityDto, TicketListQueryDto } from './ticket.dto';
+import { AddCommentDto, AssignTicketDto, CreateTicketDto, RejectTicketDto, ResolveTicketDto, SetPriorityDto, TicketListQueryDto } from './ticket.dto';
 import { AuthenticatedUser } from './ticket.types';
 import { TicketsService } from './tickets.service';
 
@@ -52,6 +52,26 @@ export class TicketsController {
   @Post(':id/resolve')
   resolve(@Param('id') id: string, @Body() dto: ResolveTicketDto, @CurrentUser() user: AuthenticatedUser) {
     return this.ticketsService.resolve(id, dto, user);
+  }
+
+  @Post(':id/ai-analysis')
+  retryAnalysis(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.ticketsService.retryAnalysis(id, user);
+  }
+
+  @Post(':id/view')
+  markViewed(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.ticketsService.markViewed(id, user);
+  }
+
+  @Get(':id/comments')
+  comments(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.ticketsService.listComments(id, user);
+  }
+
+  @Post(':id/comments')
+  addComment(@Param('id') id: string, @Body() dto: AddCommentDto, @CurrentUser() user: AuthenticatedUser) {
+    return this.ticketsService.addComment(id, dto, user);
   }
 
   @Get(':id/audit-events')

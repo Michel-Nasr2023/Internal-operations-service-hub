@@ -3,7 +3,10 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { AuthenticatedUser, UserRole } from '../tickets/ticket.types';
 import { LoginRequestDto, SignupRequestDto } from './auth.dto';
+import { hashPassword, isHashedPassword, verifyPassword } from './password';
+import { signToken } from './token';
 import { UserEntity } from './user.entity';
+import { AuditService } from '../audit/audit.service';
 
 export type AuthenticatedSession = AuthenticatedUser & {
   email: string;
@@ -11,6 +14,7 @@ export type AuthenticatedSession = AuthenticatedUser & {
   lastName: string;
   jobTitle?: string;
   employeeId?: string;
+  token: string;
 };
 
 export interface DirectoryUser {
@@ -23,7 +27,10 @@ export interface DirectoryUser {
 
 @Injectable()
 export class AuthService implements OnModuleInit {
-  constructor(@InjectRepository(UserEntity) private readonly userRepository: Repository<UserEntity>) {}
+  constructor(
+    @InjectRepository(UserEntity) private readonly userRepository: Repository<UserEntity>,
+    private readonly auditService: AuditService,
+  ) {}
 
   async onModuleInit(): Promise<void> {
     await this.seedDefaultUsers();
@@ -33,23 +40,51 @@ export class AuthService implements OnModuleInit {
     const normalizedEmail = dto.email.trim().toLowerCase();
     const user = await this.userRepository.findOne({ where: { email: normalizedEmail } });
 
-    if (!user || user.password !== dto.password) {
+    if (!user || !verifyPassword(dto.password, user.password)) {
+      // The client always sees the same message; the log records which check failed.
+      await this.recordLoginFailure(normalizedEmail, user ? 'wrong password' : 'unknown email', user);
       throw new UnauthorizedException('Invalid email or password');
     }
 
     if (user.status !== 'active') {
+      await this.recordLoginFailure(normalizedEmail, 'account disabled', user);
       throw new UnauthorizedException('This account is not active');
     }
 
-    return {
-      id: user.id,
-      role: user.role,
-      email: user.email,
-      firstName: user.firstName,
-      lastName: user.lastName,
-      jobTitle: user.jobTitle,
-      employeeId: user.employeeId,
-    };
+    if (!isHashedPassword(user.password)) {
+      await this.userRepository.update({ id: user.id }, { password: hashPassword(dto.password) });
+    }
+
+    await this.auditService.record({
+      category: 'auth',
+      action: 'LOGIN_SUCCEEDED',
+      actor: user,
+      target: { type: 'user', id: user.id },
+      summary: `${fullName(user)} signed in`,
+    });
+    return this.toSession(user);
+  }
+
+  async logout(user: AuthenticatedUser): Promise<void> {
+    const record = await this.userRepository.findOneBy({ id: user.id });
+    await this.auditService.record({
+      category: 'auth',
+      action: 'LOGOUT',
+      actor: user,
+      target: { type: 'user', id: user.id },
+      summary: `${record ? fullName(record) : user.id} signed out`,
+    });
+  }
+
+  private async recordLoginFailure(email: string, reason: string, user: UserEntity | null): Promise<void> {
+    await this.auditService.record({
+      category: 'auth',
+      action: 'LOGIN_FAILED',
+      outcome: 'failure',
+      target: user ? { type: 'user', id: user.id } : undefined,
+      summary: `Failed sign-in for ${email} (${reason})`,
+      details: { email, reason },
+    });
   }
 
   async signup(dto: SignupRequestDto): Promise<AuthenticatedSession> {
@@ -57,6 +92,13 @@ export class AuthService implements OnModuleInit {
     const existing = await this.userRepository.findOne({ where: { email: normalizedEmail } });
 
     if (existing) {
+      await this.auditService.record({
+        category: 'auth',
+        action: 'SIGNUP_FAILED',
+        outcome: 'failure',
+        summary: `Sign-up refused for ${normalizedEmail} (email already registered)`,
+        details: { email: normalizedEmail, reason: 'email already registered' },
+      });
       throw new ConflictException('An account with this email already exists');
     }
 
@@ -66,8 +108,9 @@ export class AuthService implements OnModuleInit {
     const user = await this.userRepository.save({
       id,
       email: normalizedEmail,
-      password: dto.password,
-      role: dto.role,
+      password: hashPassword(dto.password),
+      // Self-service accounts are always employees; Helpdesk access is granted with `npm run user:role`.
+      role: 'employee',
       firstName: dto.firstName,
       lastName: dto.lastName,
       jobTitle: dto.jobTitle,
@@ -76,15 +119,14 @@ export class AuthService implements OnModuleInit {
       createdAt: now,
     });
 
-    return {
-      id: user.id,
-      role: user.role,
-      email: user.email,
-      firstName: user.firstName,
-      lastName: user.lastName,
-      jobTitle: user.jobTitle,
-      employeeId: user.employeeId,
-    };
+    await this.auditService.record({
+      category: 'auth',
+      action: 'SIGNUP',
+      actor: user,
+      target: { type: 'user', id: user.id },
+      summary: `${fullName(user)} created an employee account (${normalizedEmail})`,
+    });
+    return this.toSession(user);
   }
 
   async listUsers(role?: UserRole): Promise<DirectoryUser[]> {
@@ -97,6 +139,19 @@ export class AuthService implements OnModuleInit {
       role: user.role,
       jobTitle: user.jobTitle,
     }));
+  }
+
+  private toSession(user: UserEntity): AuthenticatedSession {
+    return {
+      id: user.id,
+      role: user.role,
+      email: user.email,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      jobTitle: user.jobTitle,
+      employeeId: user.employeeId,
+      token: signToken({ id: user.id, role: user.role }),
+    };
   }
 
   private async nextSequentialId(): Promise<string> {
@@ -142,9 +197,14 @@ export class AuthService implements OnModuleInit {
     await this.userRepository.save(
       employees.map((employee) => ({
         ...employee,
+        password: hashPassword(employee.password),
         status: 'active',
         createdAt: now,
       })),
     );
   }
+}
+
+function fullName(user: Pick<UserEntity, 'firstName' | 'lastName'>): string {
+  return `${user.firstName} ${user.lastName}`.trim();
 }
