@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Post, Query } from '@nestjs/common';
 import { AuthService } from './auth.service';
-import { ForgotPasswordDto, LoginRequestDto, ResetPasswordDto, ResetTokenDto, SignupRequestDto } from './auth.dto';
+import { BadRequestException } from '@nestjs/common';
+import { ForgotPasswordDto, LoginRequestDto, ResetPasswordDto, ResetTokenDto, SignupRequestDto, VerifyResetCodeDto } from './auth.dto';
 import { PasswordResetService } from './password-reset.service';
 import { CurrentUser, requireRole } from '../tickets/auth.decorator';
 import { AuthenticatedUser, UserRole } from '../tickets/ticket.types';
@@ -35,9 +36,17 @@ export class AuthController {
     return this.passwordResetService.check(dto.token);
   }
 
+  // Confirms the 6-digit code from the email before the new password is chosen.
+  @Post('reset-password/verify-code')
+  verifyResetCode(@Body() dto: VerifyResetCodeDto) {
+    return this.passwordResetService.verifyCode(dto.email, dto.code);
+  }
+
   @Post('reset-password')
   async resetPassword(@Body() dto: ResetPasswordDto) {
-    await this.passwordResetService.reset(dto.token, dto.newPassword);
+    const credential = dto.token ? { token: dto.token } : dto.email && dto.code ? { email: dto.email, code: dto.code } : null;
+    if (!credential) throw new BadRequestException('Provide the link token, or your email and the 6-digit code.');
+    await this.passwordResetService.reset(credential, dto.newPassword);
     return { message: 'Your password has been set. You can now sign in.' };
   }
 

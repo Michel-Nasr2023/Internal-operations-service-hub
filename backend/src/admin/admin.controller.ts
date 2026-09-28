@@ -1,7 +1,7 @@
 import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { CurrentUser, requireAdministrator } from '../tickets/auth.decorator';
 import { AuthenticatedUser } from '../tickets/ticket.types';
-import { AdminUserQueryDto, CreateUserDto, UpdateUserDto } from './admin.dto';
+import { AdminUserQueryDto, CreateUserDto, HandoverDto, UpdateUserDto } from './admin.dto';
 import { AdminService } from './admin.service';
 
 // Administrators only. Ticket work (queue, assignment, activity log) uses the regular endpoints,
@@ -32,6 +32,13 @@ export class AdminController {
   updateUser(@Param('id') id: string, @Body() dto: UpdateUserDto, @CurrentUser() user: AuthenticatedUser) {
     requireAdministrator(user);
     return this.adminService.updateUser(id, dto, user);
+  }
+
+  // Moves the person's Assigned / In Progress tickets to another employee or back to the Helpdesk queue.
+  @Post('users/:id/handover')
+  handOver(@Param('id') id: string, @Body() dto: HandoverDto, @CurrentUser() user: AuthenticatedUser) {
+    requireAdministrator(user);
+    return this.adminService.handOver(id, dto, user);
   }
 
   @Post('users/:id/password-reset')

@@ -32,6 +32,14 @@ export interface Ticket {
   // When the current user last opened this ticket's details.
   viewedAt?: string;
   requesterAvatarUpdatedAt?: string | null;
+  // Helpdesk member who approved/rejected the ticket, and who gave it to its current assignee.
+  reviewedBy?: string;
+  reviewedAt?: string;
+  reviewedByName?: string;
+  reviewedByAvatarUpdatedAt?: string | null;
+  assignedBy?: string;
+  assignedByName?: string;
+  assignedByAvatarUpdatedAt?: string | null;
   assigneeAvatarUpdatedAt?: string | null;
   attachmentCount?: number;
   aiResult?: TicketAiAnalysis;

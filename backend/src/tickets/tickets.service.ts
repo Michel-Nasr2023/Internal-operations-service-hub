@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { randomUUID } from 'node:crypto';
 import { In, Repository } from 'typeorm';
@@ -14,7 +14,7 @@ import { AuditService } from '../audit/audit.service';
 import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
-export class TicketsService {
+export class TicketsService implements OnModuleInit {
   private readonly logger = new Logger(TicketsService.name);
 
   constructor(
@@ -27,6 +27,30 @@ export class TicketsService {
     private readonly notificationsService: NotificationsService,
     private readonly auditService: AuditService,
   ) {}
+
+  // Tickets handled before "reviewed by" / "assigned by" were stored get them from their own history.
+  async onModuleInit(): Promise<void> {
+    try {
+      const tickets = await this.ticketRepository.find();
+      for (const ticket of tickets) {
+        const events = ticket.auditEvents ?? [];
+        const lastOf = (...actions: string[]) => [...events].reverse().find((event) => actions.includes(event.action));
+        const changes: Partial<TicketEntity> = {};
+
+        const review = lastOf('TICKET_APPROVED', 'TICKET_REJECTED');
+        if (!ticket.reviewedBy && review) {
+          changes.reviewedBy = review.actorId;
+          changes.reviewedAt = review.timestamp;
+        }
+        const assignment = lastOf('TICKET_ASSIGNED', 'TICKET_REASSIGNED');
+        if (!ticket.assignedBy && ticket.assigneeId && assignment) changes.assignedBy = assignment.actorId;
+
+        if (Object.keys(changes).length > 0) await this.ticketRepository.update({ id: ticket.id }, changes);
+      }
+    } catch (error) {
+      this.logger.error(`Could not fill in reviewer/assigner history: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
 
   // Audit events added since the ticket was loaded; written to the system audit log after the ticket saves.
   private readonly pendingAudit = new WeakMap<Ticket, Array<{ event: AuditEvent; actor: AuthenticatedUser }>>();
@@ -121,11 +145,15 @@ export class TicketsService {
     if (assigning) await this.assertAssignable(dto.assigneeId!);
 
     ticket.priority = dto.priority;
+    this.markReviewed(ticket, user);
     this.transition(ticket, user, TicketStatus.APPROVED, 'TICKET_APPROVED');
     if (assigning) this.applyAssignment(ticket, user, dto.assigneeId!, dto.expectedDurationHours!);
     const saved = await this.persist(ticket);
 
-    await this.notify((n) => n.notifyUser(saved.requesterId, { kind: 'ticket-approved', ticket: saved, message: `Approved with ${saved.priority} priority.` }, user.id));
+    const reviewer = await this.nameOf(user.id);
+    await this.notify((n) =>
+      n.notifyUser(saved.requesterId, { kind: 'ticket-approved', ticket: saved, message: `Approved by ${reviewer} with ${saved.priority} priority.` }, user.id),
+    );
     if (assigning) await this.notifyAssignee(saved, user);
     return this.present(saved);
   }
@@ -135,9 +163,11 @@ export class TicketsService {
     this.assertHelpdesk(user);
     this.assertStatus(ticket, TicketStatus.PENDING_HELPDESK_REVIEW);
     ticket.rejectionReason = dto.reason;
+    this.markReviewed(ticket, user);
     this.transition(ticket, user, TicketStatus.REJECTED, 'TICKET_REJECTED', dto.reason);
     const saved = await this.persist(ticket);
-    await this.notify((n) => n.notifyUser(saved.requesterId, { kind: 'ticket-rejected', ticket: saved, message: `Rejected: ${dto.reason}` }, user.id));
+    const reviewer = await this.nameOf(user.id);
+    await this.notify((n) => n.notifyUser(saved.requesterId, { kind: 'ticket-rejected', ticket: saved, message: `Rejected by ${reviewer}: ${dto.reason}` }, user.id));
     return this.present(saved);
   }
 
@@ -164,6 +194,70 @@ export class TicketsService {
     return this.present(saved);
   }
 
+  // Moves every Assigned / In Progress ticket held by `fromUserId`, e.g. before their account is disabled.
+  // `reassign`: to another active employee, who must claim it again (the work timer restarts).
+  // `queue`: back to Helpdesk as Approved and unassigned.
+  async handOverAssignments(
+    fromUserId: string,
+    target: { mode: 'reassign'; toUserId: string } | { mode: 'queue' },
+    actor: AuthenticatedUser,
+    reason: string,
+  ): Promise<{ moved: number }> {
+    if (target.mode === 'reassign') {
+      if (target.toUserId === fromUserId) throw new BadRequestException('Choose a different person to take over the tickets');
+      const recipient = await this.userRepository.findOneBy({ id: target.toUserId });
+      if (!recipient || recipient.status !== 'active' || recipient.role !== 'employee') {
+        throw new BadRequestException('Tickets can only be handed to an active employee');
+      }
+    }
+
+    const tickets = await this.ticketRepository.find({
+      where: [
+        { assigneeId: fromUserId, status: TicketStatus.ASSIGNED },
+        { assigneeId: fromUserId, status: TicketStatus.IN_PROGRESS },
+      ],
+    });
+
+    for (const ticket of tickets) {
+      // Explicit nulls: workflow saves skip undefined fields, so this is how the claim is cleared.
+      const clear = ticket as unknown as Record<'claimedAt' | 'dueAt', string | null>;
+      clear.claimedAt = null;
+      clear.dueAt = null;
+
+      if (target.mode === 'reassign') {
+        ticket.assigneeId = target.toUserId;
+        ticket.assignedAt = new Date().toISOString();
+        ticket.assignedBy = actor.id;
+        if (ticket.status === TicketStatus.IN_PROGRESS) {
+          this.transition(ticket, actor, TicketStatus.ASSIGNED, 'TICKET_REASSIGNED', reason);
+        } else {
+          this.touch(ticket);
+          this.addAudit(ticket, actor, 'TICKET_REASSIGNED', undefined, undefined, reason);
+        }
+        const saved = await this.persist(ticket);
+        await this.notifyAssignee(saved, actor);
+      } else {
+        const unassign = ticket as unknown as Record<'assigneeId' | 'assignedAt' | 'assignedBy', string | null> & { expectedDurationHours: number | null };
+        unassign.assigneeId = null;
+        unassign.assignedAt = null;
+        unassign.assignedBy = null;
+        unassign.expectedDurationHours = null;
+        this.transition(ticket, actor, TicketStatus.APPROVED, 'TICKET_RETURNED_TO_QUEUE', reason);
+        await this.persist(ticket);
+      }
+    }
+    return { moved: tickets.length };
+  }
+
+  async countActiveAssignments(userId: string): Promise<number> {
+    return this.ticketRepository.count({
+      where: [
+        { assigneeId: userId, status: TicketStatus.ASSIGNED },
+        { assigneeId: userId, status: TicketStatus.IN_PROGRESS },
+      ],
+    });
+  }
+
   private async assertAssignable(assigneeId: string): Promise<void> {
     const assignee = await this.userRepository.findOneBy({ id: assigneeId });
     if (!assignee || assignee.status !== 'active') {
@@ -174,16 +268,28 @@ export class TicketsService {
   private applyAssignment(ticket: Ticket, user: AuthenticatedUser, assigneeId: string, expectedDurationHours: number): void {
     ticket.assigneeId = assigneeId;
     ticket.assignedAt = new Date().toISOString();
+    ticket.assignedBy = user.id;
     ticket.expectedDurationHours = expectedDurationHours;
     this.transition(ticket, user, TicketStatus.ASSIGNED, 'TICKET_ASSIGNED');
   }
 
+  private markReviewed(ticket: Ticket, user: AuthenticatedUser): void {
+    ticket.reviewedBy = user.id;
+    ticket.reviewedAt = new Date().toISOString();
+  }
+
+  private async nameOf(userId: string): Promise<string> {
+    const person = await this.userRepository.findOneBy({ id: userId });
+    return person ? fullName(person) : 'Helpdesk';
+  }
+
   private async notifyAssignee(ticket: Ticket, user: AuthenticatedUser): Promise<void> {
+    const assigner = await this.nameOf(user.id);
     await this.notify((n) =>
       n.notifyUser(ticket.assigneeId, {
         kind: 'ticket-assigned',
         ticket,
-        message: `Assigned to you. Expected duration: ${ticket.expectedDurationHours}h.`,
+        message: `${assigner} assigned this ticket to you. Expected duration: ${ticket.expectedDurationHours}h.`,
         dedupeKey: `ticket-assigned:${ticket.id}:${ticket.assignedAt}`,
       }, user.id),
     );
@@ -250,7 +356,9 @@ export class TicketsService {
   }
 
   private async presentAll(tickets: Ticket[], viewer?: AuthenticatedUser): Promise<TicketView[]> {
-    const ids = [...new Set(tickets.flatMap((ticket) => [ticket.requesterId, ticket.assigneeId]).filter((id): id is string => !!id))];
+    const ids = [
+      ...new Set(tickets.flatMap((ticket) => [ticket.requesterId, ticket.assigneeId, ticket.reviewedBy, ticket.assignedBy]).filter((id): id is string => !!id)),
+    ];
     const users = ids.length > 0 ? await this.userRepository.findBy({ id: In(ids) }) : [];
     const names = new Map(users.map((user) => [user.id, fullName(user)]));
     const avatars = new Map(users.map((user) => [user.id, user.avatarUpdatedAt ?? null]));
@@ -267,6 +375,10 @@ export class TicketsService {
       assigneeName: ticket.assigneeId ? names.get(ticket.assigneeId) : undefined,
       requesterAvatarUpdatedAt: avatars.get(ticket.requesterId) ?? null,
       assigneeAvatarUpdatedAt: ticket.assigneeId ? avatars.get(ticket.assigneeId) ?? null : null,
+      reviewedByName: ticket.reviewedBy ? names.get(ticket.reviewedBy) : undefined,
+      reviewedByAvatarUpdatedAt: ticket.reviewedBy ? avatars.get(ticket.reviewedBy) ?? null : null,
+      assignedByName: ticket.assignedBy ? names.get(ticket.assignedBy) : undefined,
+      assignedByAvatarUpdatedAt: ticket.assignedBy ? avatars.get(ticket.assignedBy) ?? null : null,
       viewedAt: viewer ? viewedAt.get(ticket.id) : undefined,
       attachmentCount: attachmentCounts.get(ticket.id) ?? 0,
     }));
@@ -408,6 +520,12 @@ export class TicketsService {
         const assignee = ticket.assigneeId ? await this.userRepository.findOneBy({ id: ticket.assigneeId }) : null;
         return `Assigned ${title} to ${assignee ? fullName(assignee) : ticket.assigneeId} (${ticket.expectedDurationHours}h)`;
       }
+      case 'TICKET_REASSIGNED': {
+        const assignee = ticket.assigneeId ? await this.userRepository.findOneBy({ id: ticket.assigneeId }) : null;
+        return `Reassigned ${title} to ${assignee ? fullName(assignee) : ticket.assigneeId}${reason ? ` (${truncate(reason, 120)})` : ''}`;
+      }
+      case 'TICKET_RETURNED_TO_QUEUE':
+        return `Returned ${title} to the Helpdesk queue${reason ? ` (${truncate(reason, 120)})` : ''}`;
       case 'TICKET_CLAIMED':
         return `Claimed ${title}; work timer started`;
       case 'TICKET_RESOLVED':

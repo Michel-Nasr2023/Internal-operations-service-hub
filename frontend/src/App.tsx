@@ -184,7 +184,16 @@ export function App() {
   }
 
   if (!user && authView === 'forgot') {
-    return <ForgotPasswordPage initialEmail={form.email} onBackToLogin={() => setAuthView('login')} />;
+    return (
+      <ForgotPasswordPage
+        initialEmail={form.email}
+        onBackToLogin={(email) => {
+          if (email) setForm({ email, password: '' });
+          setError('');
+          setAuthView('login');
+        }}
+      />
+    );
   }
 
   if (!user && authView === 'signup') {
@@ -288,7 +297,7 @@ export function App() {
 
         <div className="employee-layout">
           {activeTab === 'overview' && <AdminOverviewPage onOpenTab={setStaffTab} />}
-          {activeTab === 'queue' && <HelpdeskDashboardPage externalOpenTicketId={pendingTicketId} onExternalOpenHandled={() => setPendingTicketId(null)} />}
+          {activeTab === 'queue' && <HelpdeskDashboardPage currentUserId={user.id} externalOpenTicketId={pendingTicketId} onExternalOpenHandled={() => setPendingTicketId(null)} />}
           {activeTab === 'workload' && <TeamWorkloadPage />}
           {activeTab === 'users' && <AdminUsersPage currentUserId={user.id} />}
           {activeTab === 'activity' && <ActivityLogPage />}

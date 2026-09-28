@@ -9,6 +9,8 @@ function formatUptime(seconds: number): string {
 }
 
 const PURPOSE_LABELS: Record<string, string> = { 'password-reset': 'Password reset', 'account-invite': 'Invitation' };
+const DELIVERY_LABELS: Record<string, string> = { sent: 'Sent', failed: 'Failed', 'not-configured': 'Not sent' };
+const DELIVERY_CLASSES: Record<string, string> = { sent: 'status-resolved', failed: 'status-rejected', 'not-configured': 'status-pending-helpdesk-review' };
 
 export function AdminSystemPage() {
   const [status, setStatus] = useState<SystemStatus | null>(null);
@@ -48,7 +50,18 @@ export function AdminSystemPage() {
           ok: status.authSecretConfigured,
           detail: status.authSecretConfigured ? 'AUTH_SECRET is set' : 'AUTH_SECRET is missing: everyone is signed out whenever the server restarts',
         },
-        { label: 'Email delivery', ok: null, detail: status.email.delivery },
+        {
+          label: 'Email delivery',
+          ok: status.email.mode === 'smtp' ? status.email.connection === 'ok' || (status.email.connection === 'unchecked' && !status.email.lastFailure) : false,
+          detail:
+            status.email.mode === 'outbox-only'
+              ? 'No mail server configured (SMTP_HOST): emails are kept in the outbox below and not delivered'
+              : status.email.connection === 'failed'
+                ? `Cannot use ${status.email.host}: ${status.email.connectionError ?? 'connection failed'}`
+                : `Sending through ${status.email.host} as ${status.email.from}${status.email.lastSentAt ? ` · last sent ${new Date(status.email.lastSentAt).toLocaleString()}` : ''}${
+                    status.email.lastFailure ? ` · last failure: ${status.email.lastFailure.error}` : ''
+                  }`,
+        },
         { label: 'Server', ok: true, detail: `Up for ${formatUptime(status.uptimeSeconds)} · Node ${status.nodeVersion} · alerts checked every ${Math.round(status.notificationCheckIntervalMs / 60000)} min` },
       ]
     : [];
@@ -91,8 +104,8 @@ export function AdminSystemPage() {
             <section className="admin-panel" aria-labelledby="outbox-heading">
               <h3 id="outbox-heading">Email outbox</h3>
               <p className="settings-hint">
-                No mail provider is connected yet, so emails the system sends (password resets, invitations) are kept here and printed in the server console.
-                Treat them as confidential: each contains a working sign-in link.
+                Every email the system sends (password resets, invitations) and whether it was delivered. When no mail server is configured, this is also where
+                the emails can be read. Treat them as confidential: each contains a working reset link or code.
               </p>
               {outbox.length === 0 ? (
                 <p className="empty-state">No emails sent yet.</p>
@@ -101,14 +114,22 @@ export function AdminSystemPage() {
                   {outbox.map((email) => (
                     <li key={email.id}>
                       <button type="button" className="outbox-item" aria-expanded={openEmailId === email.id} onClick={() => setOpenEmailId(openEmailId === email.id ? null : email.id)}>
-                        <span className="status-pill status-assigned">{PURPOSE_LABELS[email.purpose] ?? email.purpose}</span>
+                        <span className="outbox-tags">
+                          <span className="status-pill status-assigned">{PURPOSE_LABELS[email.purpose] ?? email.purpose}</span>
+                          <span className={`status-pill ${DELIVERY_CLASSES[email.status] ?? 'status-assigned'}`}>{DELIVERY_LABELS[email.status] ?? email.status}</span>
+                        </span>
                         <span className="outbox-subject">
                           <strong>{email.to}</strong>
                           <small>{email.subject}</small>
                         </span>
                         <small className="nowrap">{new Date(email.createdAt).toLocaleString()}</small>
                       </button>
-                      {openEmail?.id === email.id && <pre className="outbox-body">{email.body}</pre>}
+                      {openEmail?.id === email.id && (
+                        <>
+                          {email.error && <p className="message error">Delivery failed: {email.error}</p>}
+                          <pre className="outbox-body">{email.body}</pre>
+                        </>
+                      )}
                     </li>
                   ))}
                 </ul>

@@ -94,6 +94,9 @@ export interface Ticket {
   resolvedAt?: string;
   resolutionFeedback?: string;
   rejectionReason?: string;
+  reviewedBy?: string;
+  reviewedAt?: string;
+  assignedBy?: string;
   createdAt: string;
   updatedAt: string;
   version: number;
@@ -117,6 +120,10 @@ export interface TicketView extends Ticket {
   assigneeName?: string;
   requesterAvatarUpdatedAt?: string | null;
   assigneeAvatarUpdatedAt?: string | null;
+  reviewedByName?: string;
+  reviewedByAvatarUpdatedAt?: string | null;
+  assignedByName?: string;
+  assignedByAvatarUpdatedAt?: string | null;
   // When the requesting user last opened this ticket's details (only set on list responses).
   viewedAt?: string;
   attachmentCount?: number;

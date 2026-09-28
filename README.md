@@ -69,7 +69,17 @@ Roles: `employee`, `helpdesk`, `administrator`. The person is signed out and get
 
 ### Email
 
-Password reset and invitation emails are stored in an outbox (visible in **Admin > System**) and printed in the API console, because no mail provider is connected yet. Links point to `APP_URL` (default `http://localhost:5173`). To send real email, implement delivery in `backend/src/mail/mail.service.ts`.
+Password reset emails contain a **6-digit code** (typed on the Forgot password page) and a link; invitations contain a link. Links point to `APP_URL` (default `http://localhost:5173`).
+
+To send real email, add SMTP settings to `backend/.env` (see [backend/.env.example](backend/.env.example)) and restart the API:
+
+| Provider | Settings |
+| --- | --- |
+| Gmail | `SMTP_HOST=smtp.gmail.com`, `SMTP_PORT=465`, `SMTP_USER=you@gmail.com`, `SMTP_PASS=` a 16-character **App password** (Google Account > Security > 2-Step Verification > App passwords; your normal password will not work) |
+| Outlook / Microsoft 365 | `SMTP_HOST=smtp.office365.com`, `SMTP_PORT=587`, your address and password (SMTP AUTH must be allowed for the mailbox) |
+| Company mail server | Host, port and credentials from your IT team |
+
+Set `MAIL_FROM` to the sender shown to recipients, e.g. `"Service Hub <you@gmail.com>"`. On start-up the API logs whether it could sign in to the mail server, and **Admin > System** shows the result plus every email with its delivery status (Sent / Failed with the reason / Not sent). Without SMTP settings, emails are kept in that outbox and printed in the API console instead of being delivered.
 
 See [Week 3 full-stack delivery](docs/week3-full-stack-delivery.md) for the original API contract, workflow tests, and build commands.
 See [Week 4 production AI integration](docs/week4-production-ai.md) for the Requesty integration, AI output validation, and the direct UI evaluation cases.

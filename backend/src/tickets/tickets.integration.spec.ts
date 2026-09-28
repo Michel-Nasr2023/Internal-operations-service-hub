@@ -136,6 +136,59 @@ describe('TicketsService SQLite integration', () => {
     expect(history.map((event) => event.actorName)).toEqual(['Maya Stone', 'Leo Warren', 'Leo Warren']);
   });
 
+  it('records which Helpdesk member reviewed and assigned a ticket, and names them in notifications', async () => {
+    await dataSource.getRepository(UserEntity).save(users());
+    const { service, notificationsService } = createServices();
+    const employee = { id: 'employee-1', role: 'employee' as const };
+    const helpdesk = { id: 'helpdesk-1', role: 'helpdesk' as const };
+
+    const ticket = await service.create({ title: 'Headset', description: 'No sound.', teamId: 'it', issueType: 'hardware', project: 'Desk 4' }, employee);
+    await service.approve(ticket.id, { priority: Priority.MEDIUM, assigneeId: 'employee-2', expectedDurationHours: 2 }, helpdesk);
+
+    const seenByRequester = await service.findOne(ticket.id, employee);
+    expect(seenByRequester).toMatchObject({ reviewedBy: 'helpdesk-1', reviewedByName: 'Leo Warren', assignedBy: 'helpdesk-1', assignedByName: 'Leo Warren' });
+    expect(seenByRequester.reviewedAt).toEqual(expect.any(String));
+
+    const requesterInbox = await notificationsService.listForUser('employee-1');
+    expect(requesterInbox.find((n) => n.kind === 'ticket-approved')?.message).toBe('Approved by Leo Warren with medium priority.');
+    const assigneeInbox = await notificationsService.listForUser('employee-2');
+    expect(assigneeInbox.find((n) => n.kind === 'ticket-assigned')?.message).toBe('Leo Warren assigned this ticket to you. Expected duration: 2h.');
+
+    // Returning the ticket to the queue clears who assigned it.
+    await service.handOverAssignments('employee-2', { mode: 'queue' }, helpdesk, 'test');
+    expect((await dataSource.getRepository(TicketEntity).findOneBy({ id: ticket.id }))?.assignedBy).toBeNull();
+  });
+
+  it('fills in reviewer and assigner for older tickets from their history', async () => {
+    await dataSource.getRepository(UserEntity).save(users());
+    const { service } = createServices();
+    const at = new Date().toISOString();
+    await dataSource.getRepository(TicketEntity).save({
+      id: 'old-1',
+      requesterId: 'employee-1',
+      teamId: 'it',
+      issueType: 'hardware',
+      project: 'Office',
+      title: 'Old ticket',
+      description: 'From before the change',
+      status: TicketStatus.ASSIGNED,
+      assigneeId: 'employee-2',
+      assignedAt: at,
+      createdAt: at,
+      updatedAt: at,
+      version: 3,
+      auditEvents: [
+        { id: 'a1', ticketId: 'old-1', action: 'TICKET_SUBMITTED', actorId: 'employee-1', timestamp: at },
+        { id: 'a2', ticketId: 'old-1', action: 'TICKET_APPROVED', actorId: 'helpdesk-1', timestamp: at },
+        { id: 'a3', ticketId: 'old-1', action: 'TICKET_ASSIGNED', actorId: 'helpdesk-1', timestamp: at },
+      ],
+    } as TicketEntity);
+
+    await service.onModuleInit();
+
+    expect(await dataSource.getRepository(TicketEntity).findOneBy({ id: 'old-1' })).toMatchObject({ reviewedBy: 'helpdesk-1', reviewedAt: at, assignedBy: 'helpdesk-1' });
+  });
+
   it('tracks which tickets each user has opened, per user', async () => {
     await dataSource.getRepository(UserEntity).save(users());
     const { service } = createServices();

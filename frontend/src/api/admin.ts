@@ -38,7 +38,15 @@ export interface SystemStatus {
   database: { ok: boolean; responseMs: number };
   ai: { configured: boolean; model: string; pending: number; failed: number };
   authSecretConfigured: boolean;
-  email: { delivery: string };
+  email: {
+    mode: 'smtp' | 'outbox-only';
+    host?: string;
+    from?: string;
+    connection: 'ok' | 'failed' | 'unchecked' | 'not-configured';
+    connectionError?: string;
+    lastSentAt?: string | null;
+    lastFailure?: { at: string; error: string } | null;
+  };
   notificationCheckIntervalMs: number;
   uptimeSeconds: number;
   nodeVersion: string;
@@ -50,6 +58,9 @@ export interface OutboxEmail {
   subject: string;
   body: string;
   purpose: string;
+  status: 'sent' | 'failed' | 'not-configured';
+  error?: string | null;
+  sentAt?: string | null;
   createdAt: string;
 }
 
@@ -79,6 +90,10 @@ export const createAdminUser = (input: { email: string; firstName: string; lastN
 
 export const updateAdminUser = (id: string, changes: Partial<Pick<AdminUser, 'email' | 'firstName' | 'lastName' | 'jobTitle' | 'status'>> & { role?: ManagedRole }) =>
   request<AdminUser>(`/users/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(changes) }, 'The account could not be updated.');
+
+// Moves the person's Assigned / In Progress tickets to another employee or back to the Helpdesk queue.
+export const handOverUserTickets = (id: string, choice: { mode: 'reassign'; toUserId: string } | { mode: 'queue' }) =>
+  request<{ moved: number; message: string }>(`/users/${encodeURIComponent(id)}/handover`, { method: 'POST', body: JSON.stringify(choice) }, 'The tickets could not be handed over.');
 
 export const sendUserPasswordReset = (id: string) =>
   request<{ message: string }>(`/users/${encodeURIComponent(id)}/password-reset`, { method: 'POST' }, 'The reset link could not be sent.');

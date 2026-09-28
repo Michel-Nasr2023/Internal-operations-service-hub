@@ -57,6 +57,17 @@ export class TicketEntity implements Ticket {
   @Column({ type: 'text', nullable: true })
   rejectionReason?: string;
 
+  // Helpdesk member who approved or rejected the ticket, and when.
+  @Column({ type: 'text', nullable: true })
+  reviewedBy?: string;
+
+  @Column({ type: 'text', nullable: true })
+  reviewedAt?: string;
+
+  // Helpdesk member (or administrator) who gave the ticket to its current assignee.
+  @Column({ type: 'text', nullable: true })
+  assignedBy?: string;
+
   @Column('text')
   createdAt!: string;
 

@@ -298,6 +298,12 @@ export function AssignedTicketsPage({ userId, externalOpenTicketId, onExternalOp
               <div><dt>Priority</dt><dd className="capitalize">{reviewTicket.priority ?? '—'}</dd></div>
               <div><dt>Submitted</dt><dd>{formatDateTime(reviewTicket.createdAt)}</dd></div>
               <div><dt>Assigned</dt><dd>{formatDateTime(reviewTicket.assignedAt)}</dd></div>
+              {reviewTicket.assignedBy && (
+                <div>
+                  <dt>Assigned by</dt>
+                  <dd><PersonChip userId={reviewTicket.assignedBy} name={reviewTicket.assignedByName} avatarUpdatedAt={reviewTicket.assignedByAvatarUpdatedAt} /></dd>
+                </div>
+              )}
               <div><dt>Expected duration</dt><dd>{reviewTicket.expectedDurationHours ? `${reviewTicket.expectedDurationHours}h` : '—'}</dd></div>
               {reviewTicket.status === 'In Progress' && <div><dt>Time remaining</dt><dd className="mono">{formatCountdown(reviewTicket.dueAt, now)}</dd></div>}
               {reviewTicket.status === 'Resolved' && <div><dt>Resolved</dt><dd>{formatDateTime(reviewTicket.resolvedAt)}</dd></div>}

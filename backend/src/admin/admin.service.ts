@@ -11,7 +11,8 @@ import { UserEntity } from '../auth/user.entity';
 import { MailService } from '../mail/mail.service';
 import { TicketEntity } from '../tickets/ticket.entity';
 import { AuthenticatedUser, TicketStatus, UserRole } from '../tickets/ticket.types';
-import { AdminUserQueryDto, CreateUserDto, UpdateUserDto } from './admin.dto';
+import { AdminUserQueryDto, CreateUserDto, HandoverDto, UpdateUserDto } from './admin.dto';
+import { TicketsService } from '../tickets/tickets.service';
 
 export interface AdminUserView {
   id: string;
@@ -42,6 +43,7 @@ export class AdminService {
     private readonly passwordResetService: PasswordResetService,
     private readonly mailService: MailService,
     private readonly auditService: AuditService,
+    private readonly ticketsService: TicketsService,
   ) {}
 
   async overview() {
@@ -134,6 +136,17 @@ export class AdminService {
     if (losesAdmin && (await this.userRepository.count({ where: { role: 'administrator', status: 'active' } })) <= 1) {
       throw new BadRequestException('There must always be at least one active administrator.');
     }
+    // Nobody may be left holding tickets they can no longer work on: hand them over first.
+    const stopsWorkingTickets = dto.status === 'disabled' || (roleChanged && dto.role === 'helpdesk');
+    if (stopsWorkingTickets) {
+      const held = await this.ticketsService.countActiveAssignments(user.id);
+      if (held > 0) {
+        throw new ConflictException(
+          `${user.firstName} ${user.lastName} still has ${held} active ticket${held === 1 ? '' : 's'}. Hand them over to someone else or back to the Helpdesk queue first.`,
+        );
+      }
+    }
+
     const email = dto.email?.toLowerCase();
     if (email && email !== user.email && (await this.userRepository.findOneBy({ email }))) {
       throw new ConflictException('Another account already uses this email');
@@ -180,6 +193,36 @@ export class AdminService {
     return (await this.present([await this.load(id)]))[0];
   }
 
+  async handOver(id: string, dto: HandoverDto, admin: AuthenticatedUser): Promise<{ moved: number; message: string }> {
+    const user = await this.load(id);
+    if (dto.mode === 'reassign' && !dto.toUserId) throw new BadRequestException('Choose who should take over the tickets');
+
+    const recipient = dto.mode === 'reassign' ? await this.userRepository.findOneBy({ id: dto.toUserId }) : null;
+    const reason = `handover from ${user.firstName} ${user.lastName}`;
+    const { moved } = await this.ticketsService.handOverAssignments(
+      user.id,
+      dto.mode === 'reassign' ? { mode: 'reassign', toUserId: dto.toUserId! } : { mode: 'queue' },
+      admin,
+      reason,
+    );
+
+    const destination = recipient ? `${recipient.firstName} ${recipient.lastName}` : 'the Helpdesk queue';
+    if (moved > 0) {
+      await this.auditService.record({
+        category: 'ticket',
+        action: 'TICKETS_HANDED_OVER',
+        actor: admin,
+        target: { type: 'user', id: user.id },
+        summary: `Handed over ${moved} ticket${moved === 1 ? '' : 's'} from ${user.firstName} ${user.lastName} to ${destination}`,
+        details: { moved, mode: dto.mode, toUserId: dto.toUserId ?? null },
+      });
+    }
+    return {
+      moved,
+      message: moved === 0 ? `${user.firstName} ${user.lastName} has no active tickets.` : `${moved} ticket${moved === 1 ? '' : 's'} handed over to ${destination}.`,
+    };
+  }
+
   async sendPasswordReset(id: string, admin: AuthenticatedUser): Promise<{ message: string }> {
     const user = await this.load(id);
     if (user.status !== 'active') throw new ConflictException('Enable the account before sending a reset link');
@@ -218,7 +261,7 @@ export class AdminService {
         failed: tickets.filter((ticket) => ticket.aiResult?.source === 'failed').length,
       },
       authSecretConfigured: !!process.env.AUTH_SECRET,
-      email: { delivery: 'Outbox and server console (no mail provider configured)' },
+      email: await this.mailService.status(),
       notificationCheckIntervalMs: Number(process.env.NOTIFICATION_CHECK_INTERVAL_MS ?? 5 * 60 * 1000),
       uptimeSeconds: Math.round(process.uptime()),
       nodeVersion: process.version,

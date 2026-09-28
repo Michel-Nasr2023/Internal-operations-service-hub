@@ -2339,6 +2339,43 @@ button:disabled {
   font-size: .78rem;
 }
 
+.access-action-stacked {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.access-action-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.access-action-row > div:first-child {
+  display: grid;
+}
+
+.handover-panel {
+  display: grid;
+  gap: .55rem;
+  padding: .85rem;
+  border: 1px solid #e3e9e6;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.handover-panel > strong {
+  font-size: .88rem;
+}
+
+.handover-panel select {
+  margin-top: .45rem;
+}
+
+.handover-panel .confirm-buttons {
+  justify-content: flex-end;
+}
+
 .access-action-danger {
   background: #fdf5f2;
 }
@@ -2380,6 +2417,129 @@ button:disabled {
     flex-direction: column;
     align-items: stretch;
   }
+}
+
+/* ---------- Password reset steps ---------- */
+.auth-steps {
+  display: flex;
+  gap: .5rem;
+  margin: 1rem 0 .25rem;
+  padding: 0;
+  list-style: none;
+}
+
+.auth-steps li {
+  display: flex;
+  flex: 1 1 0;
+  align-items: center;
+  gap: .4rem;
+  padding-top: .55rem;
+  border-top: 3px solid #e3e9e6;
+  color: #68767c;
+  font-size: .78rem;
+  font-weight: 600;
+}
+
+.auth-steps li span {
+  display: inline-grid;
+  place-items: center;
+  width: 1.3rem;
+  height: 1.3rem;
+  border-radius: 999px;
+  background: #eef1f0;
+  font-size: .72rem;
+}
+
+.auth-steps .auth-step-current {
+  border-top-color: #1e8a4c;
+  color: #18212b;
+}
+
+.auth-steps .auth-step-current span {
+  background: #1e8a4c;
+  color: #fff;
+}
+
+.auth-steps .auth-step-done {
+  border-top-color: #8cc5a3;
+  color: #245849;
+}
+
+.auth-steps .auth-step-done span {
+  background: #e1f1e9;
+  color: #245849;
+}
+
+.code-input {
+  font: 700 1.6rem 'Space Grotesk', monospace;
+  letter-spacing: .45em;
+  text-align: center;
+}
+
+.auth-links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: .5rem;
+  margin-top: .9rem;
+  font-size: .84rem;
+}
+
+.link-button:disabled {
+  color: #9aa6ab;
+  text-decoration: none;
+  cursor: default;
+}
+
+.outbox-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .3rem;
+}
+
+/* ---------- Who is handling a ticket (requester view) ---------- */
+.handled-by {
+  margin-bottom: 1.25rem;
+}
+
+.handled-by-waiting {
+  margin: .35rem 0 0;
+  color: #586772;
+  font-size: .9rem;
+}
+
+.handled-by-list {
+  display: grid;
+  gap: .45rem;
+  margin: .5rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.handled-by-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .35rem .75rem;
+  padding: .55rem .75rem;
+  border-radius: 8px;
+  background: #f6f9f7;
+  font-size: .88rem;
+}
+
+.handled-by-label {
+  min-width: 6.5rem;
+  color: #586772;
+  font-size: .76rem;
+  font-weight: 700;
+  letter-spacing: .03em;
+  text-transform: uppercase;
+}
+
+.handled-by-list small {
+  margin-left: auto;
+  color: #68767c;
+  font-size: .76rem;
 }
 
 .overdue-pill {

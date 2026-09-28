@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useState } from 'react';
 import {
   AdminUser,
   createAdminUser,
+  handOverUserTickets,
   listAdminUsers,
   ManagedRole,
   sendUserPasswordReset,
@@ -169,6 +170,7 @@ export function AdminUsersPage({ currentUserId }: AdminUsersPageProps) {
           isSelf={managing.id === currentUserId}
           onClose={() => setManagingId(null)}
           onUpdated={replaceUser}
+          onRefresh={load}
         />
       )}
     </div>
@@ -252,28 +254,130 @@ function CreateUserModal({ onClose, onCreated }: { onClose: () => void; onCreate
   );
 }
 
-function ManageUserModal({ user, isSelf, onClose, onUpdated }: { user: AdminUser; isSelf: boolean; onClose: () => void; onUpdated: (user: AdminUser) => void }) {
+type HandoverChoice = { mode: 'reassign'; toUserId: string } | { mode: 'queue' };
+
+// Asks where someone's active tickets should go: another active employee (least busy first) or the Helpdesk queue.
+function HandoverPanel({
+  user,
+  confirmLabel,
+  busy,
+  onConfirm,
+  onCancel,
+}: {
+  user: AdminUser;
+  confirmLabel: string;
+  busy: boolean;
+  onConfirm: (choice: HandoverChoice) => void;
+  onCancel: () => void;
+}) {
+  const [candidates, setCandidates] = useState<AdminUser[] | null>(null);
+  const [mode, setMode] = useState<'reassign' | 'queue'>('reassign');
+  const [toUserId, setToUserId] = useState('');
+  const count = user.activeAssignments;
+
+  useEffect(() => {
+    listAdminUsers({ role: 'employee', status: 'active' })
+      .then((loaded) => {
+        const others = loaded.filter((candidate) => candidate.id !== user.id).sort((a, b) => a.activeAssignments - b.activeAssignments);
+        setCandidates(others);
+        if (others.length === 0) setMode('queue');
+      })
+      .catch(() => setCandidates([]));
+  }, [user.id]);
+
+  const canConfirm = mode === 'queue' || !!toUserId;
+
+  return (
+    <div className="handover-panel" role="group" aria-label="Hand over active tickets">
+      <strong>
+        {user.firstName} has {count} active ticket{count === 1 ? '' : 's'}. Where should {count === 1 ? 'it' : 'they'} go?
+      </strong>
+
+      <label className={mode === 'reassign' ? 'role-option role-option-selected' : 'role-option'}>
+        <input type="radio" name={`handover-${user.id}`} checked={mode === 'reassign'} onChange={() => setMode('reassign')} disabled={candidates?.length === 0} />
+        <span>
+          <strong>Reassign to another employee</strong>
+          <small>They are notified and must claim each ticket; work in progress restarts its timer.</small>
+          {mode === 'reassign' && (
+            <select value={toUserId} onChange={(event) => setToUserId(event.target.value)} aria-label="Employee who takes over">
+              <option value="">{candidates === null ? 'Loading employees...' : 'Choose an employee'}</option>
+              {candidates?.map((candidate) => (
+                <option key={candidate.id} value={candidate.id}>
+                  {candidate.firstName} {candidate.lastName} — {candidate.activeAssignments} active
+                </option>
+              ))}
+            </select>
+          )}
+          {candidates?.length === 0 && <small>No other active employees are available.</small>}
+        </span>
+      </label>
+
+      <label className={mode === 'queue' ? 'role-option role-option-selected' : 'role-option'}>
+        <input type="radio" name={`handover-${user.id}`} checked={mode === 'queue'} onChange={() => setMode('queue')} />
+        <span>
+          <strong>Return to the Helpdesk queue</strong>
+          <small>The tickets go back to Approved and unassigned, so Helpdesk can assign them.</small>
+        </span>
+      </label>
+
+      <div className="confirm-buttons">
+        <button type="button" className="settings-button-secondary" onClick={onCancel} disabled={busy}>Cancel</button>
+        <button
+          type="button"
+          className="action-confirm"
+          disabled={!canConfirm || busy}
+          onClick={() => onConfirm(mode === 'reassign' ? { mode: 'reassign', toUserId } : { mode: 'queue' })}
+        >
+          {busy ? 'Working...' : confirmLabel}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ManageUserModal({
+  user,
+  isSelf,
+  onClose,
+  onUpdated,
+  onRefresh,
+}: {
+  user: AdminUser;
+  isSelf: boolean;
+  onClose: () => void;
+  onUpdated: (user: AdminUser) => void;
+  onRefresh: () => Promise<void>;
+}) {
   const managedRole: ManagedRole = user.role === 'assignee' ? 'employee' : user.role;
   const [form, setForm] = useState({ firstName: user.firstName, lastName: user.lastName, email: user.email, jobTitle: user.jobTitle ?? '', role: managedRole });
   const [message, setMessage] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
-  const [confirming, setConfirming] = useState<'disable' | 'signout' | null>(null);
+  const [confirming, setConfirming] = useState<'disable' | 'signout' | 'handover' | null>(null);
 
   const detailsChanged =
     form.firstName.trim() !== user.firstName || form.lastName.trim() !== user.lastName || form.email.trim().toLowerCase() !== user.email || form.jobTitle.trim() !== (user.jobTitle ?? '');
   const roleChanged = form.role !== managedRole;
+  const hasTickets = user.activeAssignments > 0;
+  // Helpdesk cannot claim or resolve tickets, so moving someone there requires handing their tickets over first.
+  const roleNeedsHandover = roleChanged && form.role === 'helpdesk' && hasTickets;
 
   async function run(label: string, action: () => Promise<string>) {
     setMessage(null);
     setBusy(label);
     try {
       setMessage({ kind: 'success', text: await action() });
+      setConfirming(null);
     } catch (actionError) {
       setMessage({ kind: 'error', text: actionError instanceof Error ? actionError.message : 'The action failed.' });
     } finally {
       setBusy(null);
-      setConfirming(null);
     }
+  }
+
+  async function handOver(choice: HandoverChoice): Promise<string> {
+    const result = await handOverUserTickets(user.id, choice);
+    await onRefresh();
+    return result.message;
   }
 
   function saveDetails(event: FormEvent<HTMLFormElement>) {
@@ -290,6 +394,14 @@ function ManageUserModal({ user, isSelf, onClose, onUpdated }: { user: AdminUser
       return roleChanged
         ? `Saved. ${updated.firstName} is now ${ROLE_LABELS[updated.role]} and must sign in again for it to apply.`
         : 'Saved.';
+    });
+  }
+
+  function disable(choice?: HandoverChoice) {
+    void run('status', async () => {
+      const handedOver = choice ? `${await handOver(choice)} ` : '';
+      onUpdated(await updateAdminUser(user.id, { status: 'disabled' }));
+      return `${handedOver}The account was disabled.`;
     });
   }
 
@@ -340,19 +452,53 @@ function ManageUserModal({ user, isSelf, onClose, onUpdated }: { user: AdminUser
           </label>
           <RoleSelect value={form.role} onChange={(role) => setForm({ ...form, role })} disabled={isSelf} />
           {isSelf && <p className="settings-hint">You cannot change your own role. Ask another administrator.</p>}
-          {roleChanged && <p className="settings-hint">Changing the role signs this person out; the new role applies when they sign in again.</p>}
+          {roleChanged && !roleNeedsHandover && <p className="settings-hint">Changing the role signs this person out; the new role applies when they sign in again.</p>}
+          {roleNeedsHandover && (
+            <HandoverPanel
+              user={user}
+              confirmLabel="Hand over tickets"
+              busy={busy === 'handover'}
+              onCancel={() => setForm({ ...form, role: managedRole })}
+              onConfirm={(choice) => void run('handover', () => handOver(choice))}
+            />
+          )}
           <div className="settings-actions">
-            <button type="submit" className="action-confirm" disabled={(!detailsChanged && !roleChanged) || busy !== null}>{busy === 'save' ? 'Saving...' : 'Save changes'}</button>
+            <button type="submit" className="action-confirm" disabled={(!detailsChanged && !roleChanged) || roleNeedsHandover || busy !== null}>
+              {busy === 'save' ? 'Saving...' : 'Save changes'}
+            </button>
           </div>
         </form>
 
         <section className="settings-section manage-section" aria-labelledby="access-heading">
           <h3 id="access-heading">Access</h3>
           <div className="access-actions">
+            {hasTickets && (
+              <div className="access-action access-action-stacked">
+                <div className="access-action-row">
+                  <div>
+                    <strong>Hand over tickets</strong>
+                    <small>Move their {user.activeAssignments} active ticket{user.activeAssignments === 1 ? '' : 's'}, e.g. before leave.</small>
+                  </div>
+                  {confirming !== 'handover' && (
+                    <button type="button" className="settings-button-secondary" disabled={busy !== null} onClick={() => setConfirming('handover')}>Hand over</button>
+                  )}
+                </div>
+                {confirming === 'handover' && (
+                  <HandoverPanel
+                    user={user}
+                    confirmLabel="Hand over tickets"
+                    busy={busy === 'handover'}
+                    onCancel={() => setConfirming(null)}
+                    onConfirm={(choice) => void run('handover', () => handOver(choice))}
+                  />
+                )}
+              </div>
+            )}
+
             <div className="access-action">
               <div>
                 <strong>Send password reset link</strong>
-                <small>Emails a single-use link that expires in 30 minutes.</small>
+                <small>Emails a 6-digit code and a single-use link, valid for 15 minutes.</small>
               </div>
               <button
                 type="button"
@@ -382,40 +528,46 @@ function ManageUserModal({ user, isSelf, onClose, onUpdated }: { user: AdminUser
             )}
 
             {!isSelf && (
-              <div className="access-action access-action-danger">
-                <div>
-                  <strong>{user.status === 'active' ? 'Disable account' : 'Enable account'}</strong>
-                  <small>
-                    {user.status === 'active'
-                      ? `Blocks sign-in immediately.${user.activeAssignments > 0 ? ` They still have ${user.activeAssignments} active assignment${user.activeAssignments === 1 ? '' : 's'}; reassign them in the queue.` : ''}`
-                      : 'Allows this person to sign in again.'}
-                  </small>
-                </div>
-                {user.status === 'active' && confirming === 'disable' ? (
-                  <div className="confirm-buttons">
-                    <button type="button" className="settings-button-secondary" onClick={() => setConfirming(null)}>Cancel</button>
+              <div className="access-action access-action-danger access-action-stacked">
+                <div className="access-action-row">
+                  <div>
+                    <strong>{user.status === 'active' ? 'Disable account' : 'Enable account'}</strong>
+                    <small>
+                      {user.status === 'active'
+                        ? hasTickets
+                          ? `Blocks sign-in immediately. Their ${user.activeAssignments} active ticket${user.activeAssignments === 1 ? '' : 's'} will be handed over first.`
+                          : 'Blocks sign-in immediately.'
+                        : 'Allows this person to sign in again.'}
+                    </small>
+                  </div>
+                  {user.status === 'active' && confirming === 'disable' && !hasTickets ? (
+                    <div className="confirm-buttons">
+                      <button type="button" className="settings-button-secondary" onClick={() => setConfirming(null)}>Cancel</button>
+                      <button type="button" className="action-confirm action-confirm-reject" disabled={busy !== null} onClick={() => disable()}>Disable</button>
+                    </div>
+                  ) : confirming === 'disable' ? null : (
                     <button
                       type="button"
-                      className="action-confirm action-confirm-reject"
+                      className={user.status === 'active' ? 'settings-button-danger' : 'settings-button-secondary'}
                       disabled={busy !== null}
-                      onClick={() => void run('status', async () => { onUpdated(await updateAdminUser(user.id, { status: 'disabled' })); return 'The account was disabled.'; })}
+                      onClick={() =>
+                        user.status === 'active'
+                          ? setConfirming('disable')
+                          : void run('status', async () => { onUpdated(await updateAdminUser(user.id, { status: 'active' })); return 'The account was enabled.'; })
+                      }
                     >
-                      Disable
+                      {user.status === 'active' ? 'Disable' : 'Enable'}
                     </button>
-                  </div>
-                ) : (
-                  <button
-                    type="button"
-                    className={user.status === 'active' ? 'settings-button-danger' : 'settings-button-secondary'}
-                    disabled={busy !== null}
-                    onClick={() =>
-                      user.status === 'active'
-                        ? setConfirming('disable')
-                        : void run('status', async () => { onUpdated(await updateAdminUser(user.id, { status: 'active' })); return 'The account was enabled.'; })
-                    }
-                  >
-                    {user.status === 'active' ? 'Disable' : 'Enable'}
-                  </button>
+                  )}
+                </div>
+                {user.status === 'active' && confirming === 'disable' && hasTickets && (
+                  <HandoverPanel
+                    user={user}
+                    confirmLabel="Hand over and disable"
+                    busy={busy === 'status'}
+                    onCancel={() => setConfirming(null)}
+                    onConfirm={(choice) => disable(choice)}
+                  />
                 )}
               </div>
             )}

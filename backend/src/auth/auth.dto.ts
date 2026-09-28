@@ -1,4 +1,4 @@
-import { IsEmail, IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsEmail, IsNotEmpty, IsOptional, IsString, Matches, MaxLength } from 'class-validator';
 
 export class LoginRequestDto {
   @IsEmail()
@@ -49,7 +49,33 @@ export class ResetTokenDto {
   token!: string;
 }
 
-export class ResetPasswordDto extends ResetTokenDto {
+export class VerifyResetCodeDto {
+  @IsEmail()
+  @IsNotEmpty()
+  email!: string;
+
+  @IsString()
+  @Matches(/^\s*\d{3}\s?\d{3}\s*$/, { message: 'The code has 6 digits.' })
+  code!: string;
+}
+
+// Either `token` (from the emailed link) or `email` + `code` (typed from the email).
+export class ResetPasswordDto {
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(200)
+  token?: string;
+
+  @IsOptional()
+  @IsEmail()
+  email?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(12)
+  code?: string;
+
   @IsString()
   @IsNotEmpty()
   @MaxLength(100)

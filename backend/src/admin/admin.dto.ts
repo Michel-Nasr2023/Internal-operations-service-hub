@@ -5,6 +5,17 @@ const trim = ({ value }: { value: unknown }) => (typeof value === 'string' ? val
 export const MANAGED_ROLES = ['employee', 'helpdesk', 'administrator'] as const;
 export type ManagedRole = (typeof MANAGED_ROLES)[number];
 
+export class HandoverDto {
+  @IsIn(['reassign', 'queue'])
+  mode!: 'reassign' | 'queue';
+
+  // Required when mode is "reassign".
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  toUserId?: string;
+}
+
 export class AdminUserQueryDto {
   @IsOptional()
   @IsString()

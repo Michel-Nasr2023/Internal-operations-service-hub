@@ -18,5 +18,6 @@ import { AuditModule } from '../audit/audit.module';
   imports: [TypeOrmModule.forFeature([TicketEntity, UserEntity, TicketCommentEntity, TicketViewEntity, TicketAttachmentEntity]), NotificationsModule, AuditModule],
   controllers: [TicketsController, TicketAttachmentsController],
   providers: [TicketsService, RqstyAiService, TicketAnalysisQueue, TicketAttachmentsService],
+  exports: [TicketsService],
 })
 export class TicketsModule {}

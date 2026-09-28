@@ -45,6 +45,12 @@ function isUnseen(ticket: Ticket): boolean {
   return !ticket.viewedAt && ticket.status !== 'Resolved' && ticket.status !== 'Rejected';
 }
 
+// One label when the same Helpdesk member approved and assigned the ticket; separate lines only when they differ.
+function reviewerLabel(ticket: Ticket): string {
+  if (ticket.status === 'Rejected') return 'Rejected by';
+  return ticket.assignedBy && ticket.assignedBy === ticket.reviewedBy ? 'Approved & assigned by' : 'Approved by';
+}
+
 function isOverdue(ticket: Ticket, now: number): boolean {
   return ticket.status === 'In Progress' && !!ticket.dueAt && new Date(ticket.dueAt).getTime() <= now;
 }
@@ -54,11 +60,13 @@ function displayStatus(status: string): string {
 }
 
 interface HelpdeskDashboardPageProps {
+  // The signed-in Helpdesk member, for the "Handled by me" filter.
+  currentUserId: string;
   externalOpenTicketId?: string | null;
   onExternalOpenHandled?: () => void;
 }
 
-export function HelpdeskDashboardPage({ externalOpenTicketId, onExternalOpenHandled }: HelpdeskDashboardPageProps = {}) {
+export function HelpdeskDashboardPage({ currentUserId, externalOpenTicketId, onExternalOpenHandled }: HelpdeskDashboardPageProps) {
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
@@ -72,6 +80,7 @@ export function HelpdeskDashboardPage({ externalOpenTicketId, onExternalOpenHand
   const [statusFilter, setStatusFilter] = useState('all');
   const [teamFilter, setTeamFilter] = useState('all');
   const [priorityFilter, setPriorityFilter] = useState('all');
+  const [handledFilter, setHandledFilter] = useState<'all' | 'me'>('all');
   const [sortOrder, setSortOrder] = useState<SortOrder>('newest');
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -258,6 +267,7 @@ export function HelpdeskDashboardPage({ externalOpenTicketId, onExternalOpenHand
     if (statusFilter !== 'all' && ticket.status !== statusFilter) return false;
     if (teamFilter !== 'all' && ticket.teamId !== teamFilter) return false;
     if (priorityFilter !== 'all' && ticket.priority !== priorityFilter) return false;
+    if (handledFilter === 'me' && ticket.reviewedBy !== currentUserId && ticket.assignedBy !== currentUserId) return false;
 
     if (searchTerm.trim()) {
       const term = searchTerm.trim().toLowerCase();
@@ -318,6 +328,13 @@ export function HelpdeskDashboardPage({ externalOpenTicketId, onExternalOpenHand
               ))}
             </select>
           </label>
+          <label>
+            Handled by
+            <select value={handledFilter} onChange={(event) => setHandledFilter(event.target.value as 'all' | 'me')}>
+              <option value="all">Anyone</option>
+              <option value="me">Me (reviewed or assigned)</option>
+            </select>
+          </label>
           <label className="filter-search">
             Search
             <input value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} placeholder="Search by title, requester name, or ticket ID" />
@@ -344,6 +361,7 @@ export function HelpdeskDashboardPage({ externalOpenTicketId, onExternalOpenHand
                   <th>Type</th>
                   <th>Project</th>
                   <th>Status</th>
+                  <th>Assigned by</th>
                   <th>Priority</th>
                   <th>Submitted</th>
                   <th>Action</th>
@@ -368,6 +386,13 @@ export function HelpdeskDashboardPage({ externalOpenTicketId, onExternalOpenHand
                     <td>
                       <span className={`status-pill status-${statusSlug(ticket.status)}`}>{displayStatus(ticket.status)}</span>
                       {isOverdue(ticket, now) && <span className="status-pill status-rejected overdue-pill">Overdue</span>}
+                    </td>
+                    <td>
+                      {ticket.assignedBy ? (
+                        <PersonChip userId={ticket.assignedBy} name={ticket.assignedBy === currentUserId ? 'You' : ticket.assignedByName} avatarUpdatedAt={ticket.assignedByAvatarUpdatedAt} />
+                      ) : (
+                        '—'
+                      )}
                     </td>
                     <td className="capitalize">{ticket.priority ?? '—'}</td>
                     <td>{new Date(ticket.createdAt).toLocaleDateString()}</td>
@@ -400,7 +425,19 @@ export function HelpdeskDashboardPage({ externalOpenTicketId, onExternalOpenHand
               <div><dt>Status</dt><dd><span className={`status-pill status-${statusSlug(reviewTicket.status)}`}>{reviewTicket.status}</span></dd></div>
               <div><dt>Priority</dt><dd className="capitalize">{reviewTicket.priority ?? '—'}</dd></div>
               <div><dt>Submitted</dt><dd>{new Date(reviewTicket.createdAt).toLocaleString()}</dd></div>
+              {reviewTicket.reviewedBy && (
+                <div>
+                  <dt>{reviewerLabel(reviewTicket)}</dt>
+                  <dd><PersonChip userId={reviewTicket.reviewedBy} name={reviewTicket.reviewedByName} avatarUpdatedAt={reviewTicket.reviewedByAvatarUpdatedAt} /></dd>
+                </div>
+              )}
               {reviewTicket.assigneeId && <div><dt>Assignee</dt><dd><PersonChip userId={reviewTicket.assigneeId} name={reviewTicket.assigneeName} avatarUpdatedAt={reviewTicket.assigneeAvatarUpdatedAt} /></dd></div>}
+              {reviewTicket.assignedBy && reviewTicket.assignedBy !== reviewTicket.reviewedBy && (
+                <div>
+                  <dt>Assigned by</dt>
+                  <dd><PersonChip userId={reviewTicket.assignedBy} name={reviewTicket.assignedByName} avatarUpdatedAt={reviewTicket.assignedByAvatarUpdatedAt} /></dd>
+                </div>
+              )}
               {reviewTicket.dueAt && <div><dt>Due</dt><dd>{new Date(reviewTicket.dueAt).toLocaleString()}{isOverdue(reviewTicket, now) ? ' · Overdue' : ''}</dd></div>}
             </dl>
 

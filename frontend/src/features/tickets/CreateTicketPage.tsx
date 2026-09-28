@@ -290,22 +290,52 @@ export function CreateTicketPage({ userId, externalOpenTicketId, onExternalOpenH
               </div>
             )}
 
-            {reviewTicket.status !== 'Rejected' && (
-              <div className="modal-description">
-                <p className="eyebrow">ASSIGNMENT</p>
-                {reviewTicket.status === 'Pending Helpdesk Review' ? (
-                  <p>Awaiting Helpdesk review.</p>
-                ) : reviewTicket.assigneeId ? (
-                  <p>
-                    Assigned to <PersonChip userId={reviewTicket.assigneeId} name={reviewTicket.assigneeName} avatarUpdatedAt={reviewTicket.assigneeAvatarUpdatedAt} bold />
-                    {reviewTicket.expectedDurationHours ? ` \u00b7 Expected duration: ${reviewTicket.expectedDurationHours}h` : ''}
-                    {reviewTicket.assignedAt ? ` \u00b7 Assigned on ${new Date(reviewTicket.assignedAt).toLocaleString()}` : ''}
-                  </p>
-                ) : (
-                  <p>Approved with priority <strong className="capitalize">{reviewTicket.priority ?? 'not set'}</strong>. Awaiting Helpdesk assignment.</p>
-                )}
-              </div>
-            )}
+            <section className="handled-by" aria-label="Who is handling this ticket">
+              <p className="eyebrow">WHO IS HANDLING IT</p>
+              {reviewTicket.status === 'Pending Helpdesk Review' ? (
+                <p className="handled-by-waiting">Waiting for a Helpdesk member to review it.</p>
+              ) : (
+                <ul className="handled-by-list">
+                  {reviewTicket.reviewedBy && (
+                    <li>
+                      <span className="handled-by-label">
+                        {reviewTicket.status === 'Rejected'
+                          ? 'Rejected by'
+                          : reviewTicket.assignedBy && reviewTicket.assignedBy === reviewTicket.reviewedBy
+                            ? 'Approved & assigned by'
+                            : 'Approved by'}
+                      </span>
+                      <PersonChip userId={reviewTicket.reviewedBy} name={reviewTicket.reviewedByName} avatarUpdatedAt={reviewTicket.reviewedByAvatarUpdatedAt} bold />
+                      {reviewTicket.reviewedAt && <small>{new Date(reviewTicket.reviewedAt).toLocaleString()}</small>}
+                    </li>
+                  )}
+                  {reviewTicket.assigneeId ? (
+                    <>
+                      {/* A separate line only when someone else assigned it (e.g. later, or after a handover). */}
+                      {reviewTicket.assignedBy && reviewTicket.assignedBy !== reviewTicket.reviewedBy && (
+                        <li>
+                          <span className="handled-by-label">Assigned by</span>
+                          <PersonChip userId={reviewTicket.assignedBy} name={reviewTicket.assignedByName} avatarUpdatedAt={reviewTicket.assignedByAvatarUpdatedAt} bold />
+                          {reviewTicket.assignedAt && <small>{new Date(reviewTicket.assignedAt).toLocaleString()}</small>}
+                        </li>
+                      )}
+                      <li>
+                        <span className="handled-by-label">Assigned to</span>
+                        <PersonChip userId={reviewTicket.assigneeId} name={reviewTicket.assigneeName} avatarUpdatedAt={reviewTicket.assigneeAvatarUpdatedAt} bold />
+                        {reviewTicket.expectedDurationHours ? <small>Expected duration: {reviewTicket.expectedDurationHours}h</small> : null}
+                      </li>
+                    </>
+                  ) : (
+                    reviewTicket.status !== 'Rejected' && (
+                      <li>
+                        <span className="handled-by-label">Next</span>
+                        <span>Approved with <strong className="capitalize">{reviewTicket.priority ?? 'no'}</strong> priority, waiting to be assigned.</span>
+                      </li>
+                    )
+                  )}
+                </ul>
+              )}
+            </section>
 
             <TicketResolutionNote ticket={reviewTicket} />
             <TicketAttachments key={`${reviewTicket.id}-${attachmentsVersion}`} ticket={reviewTicket} />

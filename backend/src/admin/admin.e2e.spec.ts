@@ -11,6 +11,11 @@ import { OutboxEmailEntity } from '../mail/outbox-email.entity';
 import { ProfileModule } from '../profile/profile.module';
 import { TicketEntity } from '../tickets/ticket.entity';
 import { AdminModule } from './admin.module';
+import { NotificationEntity } from '../notifications/notification.entity';
+import { TicketAttachmentEntity } from '../tickets/ticket-attachment.entity';
+import { TicketCommentEntity } from '../tickets/ticket-comment.entity';
+import { TicketViewEntity } from '../tickets/ticket-view.entity';
+import { TicketStatus } from '../tickets/ticket.types';
 
 describe('Password reset and administration (e2e)', () => {
   let app: INestApplication;
@@ -22,7 +27,17 @@ describe('Password reset and administration (e2e)', () => {
         TypeOrmModule.forRoot({
           type: 'sqlite',
           database: ':memory:',
-          entities: [UserEntity, AuditLogEntity, TicketEntity, PasswordResetTokenEntity, OutboxEmailEntity],
+          entities: [
+            UserEntity,
+            AuditLogEntity,
+            TicketEntity,
+            PasswordResetTokenEntity,
+            OutboxEmailEntity,
+            NotificationEntity,
+            TicketCommentEntity,
+            TicketViewEntity,
+            TicketAttachmentEntity,
+          ],
           synchronize: true,
         }),
         AuthModule,
@@ -78,7 +93,7 @@ describe('Password reset and administration (e2e)', () => {
     expect(await outboxFor('nobody@company.com')).toHaveLength(0);
 
     const [email] = await outboxFor('employee@company.com');
-    expect(email.subject).toContain('Reset your');
+    expect(email.subject).toMatch(/^\d{6} is your password reset code$/);
     const token = linkToken(email.body);
     expect(await app.get(DataSource).getRepository(PasswordResetTokenEntity).findOneBy({ tokenHash: token })).toBeNull();
 
@@ -92,6 +107,32 @@ describe('Password reset and administration (e2e)', () => {
     expect((await fetch(`${baseUrl}/profile`, { headers: { Authorization: `Bearer ${oldSession}` } })).status).toBe(401);
   });
 
+  it('resets a password with the 6-digit code from the email, and cancels after too many wrong codes', async () => {
+    await app.get(DataSource).getRepository(UserEntity).save({
+      id: 'coder-1', email: 'coder@company.com', password: 'x', role: 'employee', firstName: 'Cody', lastName: 'Der', status: 'active', createdAt: new Date().toISOString(),
+    });
+    const codeFrom = async () => (await outboxFor('coder@company.com')).at(-1)!.body.match(/reset code is: (\d{6})/)![1];
+    const wrongCode = (code: string) => String((Number(code) + 1) % 1_000_000).padStart(6, '0');
+
+    await post('/auth/forgot-password', { email: 'coder@company.com' });
+    const code = await codeFrom();
+    expect((await post('/auth/reset-password/verify-code', { email: 'coder@company.com', code: wrongCode(code) })).status).toBe(400);
+    expect((await post('/auth/reset-password/verify-code', { email: 'nobody@company.com', code })).status).toBe(400);
+    expect(await (await post('/auth/reset-password/verify-code', { email: 'coder@company.com', code: `${code.slice(0, 3)} ${code.slice(3)}` })).json()).toEqual({ valid: true });
+
+    expect((await post('/auth/reset-password', { email: 'coder@company.com', code, newPassword: 'Coded1234' })).status).toBe(201);
+    await signIn('coder@company.com', 'Coded1234');
+    expect((await post('/auth/reset-password', { email: 'coder@company.com', code, newPassword: 'Again1234' })).status).toBe(400);
+
+    await post('/auth/forgot-password', { email: 'coder@company.com' });
+    const second = await codeFrom();
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      await post('/auth/reset-password/verify-code', { email: 'coder@company.com', code: wrongCode(second) });
+    }
+    expect((await post('/auth/reset-password/verify-code', { email: 'coder@company.com', code: second })).status).toBe(400);
+    expect(await app.get(DataSource).getRepository(AuditLogEntity).countBy({ action: 'PASSWORD_RESET_FAILED', targetId: 'coder-1' })).toBe(6);
+  });
+
   it('limits reset emails to three an hour per account', async () => {
     for (let attempt = 0; attempt < 5; attempt += 1) await post('/auth/forgot-password', { email: 'helpdesk@company.com' });
     expect(await outboxFor('helpdesk@company.com')).toHaveLength(3);
@@ -103,7 +144,7 @@ describe('Password reset and administration (e2e)', () => {
     expect((await fetch(`${baseUrl}/admin/users`, { headers: { Authorization: `Bearer ${employee}` } })).status).toBe(403);
 
     const overview = (await (await fetch(`${baseUrl}/admin/overview`, { headers: { Authorization: `Bearer ${admin}` } })).json()) as { users: { byRole: Record<string, number> } };
-    expect(overview.users.byRole).toMatchObject({ employee: 1, helpdesk: 1, administrator: 1 });
+    expect(overview.users.byRole).toMatchObject({ employee: 2, helpdesk: 1, administrator: 1 });
 
     // Create: the new person sets their own password from the invitation.
     const created = await post('/admin/users', { email: 'Sam@Company.com', firstName: 'Sam', lastName: 'Reed', role: 'employee' }, admin);
@@ -136,5 +177,69 @@ describe('Password reset and administration (e2e)', () => {
 
     const actions = (await app.get(DataSource).getRepository(AuditLogEntity).find()).map((row) => row.action);
     expect(actions).toEqual(expect.arrayContaining(['USER_CREATED', 'USER_INVITED', 'INVITE_ACCEPTED', 'USER_ROLE_CHANGED', 'USER_DISABLED', 'USER_SESSIONS_REVOKED']));
+  });
+
+  it('requires handing over active tickets before disabling someone, then reassigns or returns them', async () => {
+    const admin = await signIn('admin@company.com', 'Admin12345');
+    const data = app.get(DataSource);
+    const now = new Date().toISOString();
+    await data.getRepository(UserEntity).save([
+      { id: 'leaver-1', email: 'leaver@company.com', password: 'x', role: 'employee', firstName: 'Lee', lastName: 'Ver', status: 'active', createdAt: now },
+      { id: 'taker-1', email: 'taker@company.com', password: 'x', role: 'employee', firstName: 'Tia', lastName: 'Ker', status: 'active', createdAt: now },
+    ]);
+    const ticket = (id: string, status: TicketStatus, extra: object = {}) => ({
+      id,
+      requesterId: 'employee-1',
+      teamId: 'it',
+      issueType: 'hardware',
+      project: 'Office',
+      title: `Ticket ${id}`,
+      description: 'Broken',
+      status,
+      priority: 'high',
+      assigneeId: 'leaver-1',
+      assignedAt: now,
+      expectedDurationHours: 4,
+      createdAt: now,
+      updatedAt: now,
+      version: 1,
+      auditEvents: [],
+      ...extra,
+    });
+    await data.getRepository(TicketEntity).save([
+      ticket('t-assigned', TicketStatus.ASSIGNED),
+      ticket('t-working', TicketStatus.IN_PROGRESS, { claimedAt: now, dueAt: now }),
+      ticket('t-done', TicketStatus.RESOLVED, { resolvedAt: now }),
+    ] as TicketEntity[]);
+
+    const blocked = await patch('/admin/users/leaver-1', { status: 'disabled' }, admin);
+    expect(blocked.status).toBe(409);
+    expect(((await blocked.json()) as { message: string }).message).toContain('still has 2 active tickets');
+    expect((await patch('/admin/users/leaver-1', { role: 'helpdesk' }, admin)).status).toBe(409);
+
+    expect((await post('/admin/users/leaver-1/handover', { mode: 'reassign', toUserId: 'helpdesk-1' }, admin)).status).toBe(400);
+    expect((await post('/admin/users/leaver-1/handover', { mode: 'reassign' }, admin)).status).toBe(400);
+
+    const handover = await post('/admin/users/leaver-1/handover', { mode: 'reassign', toUserId: 'taker-1' }, admin);
+    expect(await handover.json()).toMatchObject({ moved: 2, message: '2 tickets handed over to Tia Ker.' });
+
+    const moved = await data.getRepository(TicketEntity).findBy({ assigneeId: 'taker-1' });
+    expect(moved.map((item) => [item.id, item.status, item.claimedAt ?? null, item.dueAt ?? null]).sort()).toEqual([
+      ['t-assigned', TicketStatus.ASSIGNED, null, null],
+      ['t-working', TicketStatus.ASSIGNED, null, null],
+    ]);
+    const working = moved.find((item) => item.id === 't-working')!;
+    expect(working.auditEvents.at(-1)).toMatchObject({ action: 'TICKET_REASSIGNED', oldStatus: TicketStatus.IN_PROGRESS, reason: 'handover from Lee Ver' });
+    expect((await data.getRepository(TicketEntity).findOneBy({ id: 't-done' }))?.assigneeId).toBe('leaver-1');
+    expect(await data.getRepository(NotificationEntity).countBy({ recipientId: 'taker-1', kind: 'ticket-assigned' })).toBe(2);
+
+    expect((await patch('/admin/users/leaver-1', { status: 'disabled' }, admin)).status).toBe(200);
+
+    // Returning to the queue leaves the ticket approved and unassigned for Helpdesk.
+    const back = await post('/admin/users/taker-1/handover', { mode: 'queue' }, admin);
+    expect(await back.json()).toMatchObject({ moved: 2 });
+    const returned = await data.getRepository(TicketEntity).findOneBy({ id: 't-working' });
+    expect(returned).toMatchObject({ status: TicketStatus.APPROVED, assigneeId: null, assignedAt: null, expectedDurationHours: null });
+    expect(returned?.auditEvents.at(-1)).toMatchObject({ action: 'TICKET_RETURNED_TO_QUEUE', newStatus: TicketStatus.APPROVED });
   });
 });

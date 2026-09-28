@@ -124,6 +124,22 @@ export async function resetPassword(token: string, newPassword: string): Promise
   }
 }
 
+async function postJson(path: string, body: object, fallback: string): Promise<unknown> {
+  const response = await fetch(`${apiUrl}${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) throw new Error((Array.isArray(payload?.message) ? payload.message.join(' ') : payload?.message) ?? fallback);
+  return payload;
+}
+
+// Checks the 6-digit code from the reset email (wrong codes count towards the attempt limit).
+export async function verifyResetCode(email: string, code: string): Promise<void> {
+  await postJson('/auth/reset-password/verify-code', { email, code }, 'The code could not be checked.');
+}
+
+export async function resetPasswordWithCode(email: string, code: string, newPassword: string): Promise<void> {
+  await postJson('/auth/reset-password', { email, code, newPassword }, 'Your password could not be changed.');
+}
+
 export async function logoutUser(): Promise<void> {
   await fetch(`${apiUrl}/auth/logout`, { method: 'POST', headers: getAuthHeaders() }).catch(() => undefined);
 }

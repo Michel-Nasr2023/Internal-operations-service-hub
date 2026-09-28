@@ -26,6 +26,7 @@ POST   /api/auth/login
 POST   /api/auth/signup
 POST   /api/auth/forgot-password           ({ email }; always the same reply)
 POST   /api/auth/reset-password/check      ({ token } -> { valid, purpose, email (masked) })
+POST   /api/auth/reset-password/verify-code ({ email, code } -> { valid: true } or 400)
 POST   /api/auth/reset-password            ({ token, newPassword })
 POST   /api/auth/logout                  (records the sign-out in the audit log)
 GET    /api/auth/users          (Helpdesk only)
@@ -65,6 +66,10 @@ Every security- and workflow-relevant action is written to the append-only `audi
 Each entry records the time, actor and role, target, outcome, a short summary, the IP address, the browser, and a request ID. Every API response carries the same ID in the `X-Request-Id` header, so a user-reported problem can be matched to its log entry. Passwords, tokens and full ticket text are never logged.
 
 Each ticket also keeps its own workflow history, saved atomically with the ticket, which `GET /api/tickets/:id/audit-events` returns with actor names. On first start the audit log is back-filled from that history.
+
+## Who handled a ticket
+
+Tickets record `reviewedBy` / `reviewedAt` (the Helpdesk member who approved or rejected it) and `assignedBy` (who gave it to its current assignee). Responses include their names and photos (`reviewedByName`, `assignedByName`, ...), and approval, rejection and assignment notifications name the person. Tickets from before this change are filled in from their history on start-up; returning a ticket to the queue clears `assignedBy`.
 
 ## Notifications
 
@@ -125,7 +130,9 @@ Every request with a session token is checked against the account: the account m
 
 ## Password reset
 
-`forgot-password` emails a single-use link (`APP_URL/?reset=<token>`) that expires after 30 minutes; earlier unused links are cancelled. At most 3 are sent per account per hour, and the reply never reveals whether the email has an account. Only a SHA-256 hash of the token is stored. Invitations from administrators use the same mechanism with a 72-hour link. Audit actions: `PASSWORD_RESET_REQUESTED`, `PASSWORD_RESET_COMPLETED`, `PASSWORD_RESET_FAILED`, `USER_INVITED`, `INVITE_ACCEPTED`.
+`forgot-password` emails a 6-digit code and a single-use link (`APP_URL/?reset=<token>`); both expire after 15 minutes and earlier unused ones are cancelled. At most 3 emails are sent per account per hour, and the reply never reveals whether the email has an account. Only SHA-256 hashes of the token and code are stored.
+
+The code flow is `POST /api/auth/reset-password/verify-code` (`{ email, code }`) then `POST /api/auth/reset-password` (`{ email, code, newPassword }`); the link flow sends `{ token, newPassword }`. Every failure gives the same message. After 5 wrong codes the reset is cancelled and a new email must be requested. Invitations from administrators use the same mechanism with a 72-hour link. Audit actions: `PASSWORD_RESET_REQUESTED`, `PASSWORD_RESET_COMPLETED`, `PASSWORD_RESET_FAILED`, `USER_INVITED`, `INVITE_ACCEPTED`.
 
 ## Administration
 
@@ -136,10 +143,11 @@ GET    /api/admin/overview
 GET    /api/admin/users                      (?search=&role=&status=)
 POST   /api/admin/users                      ({ email, firstName, lastName, jobTitle?, role }; sends an invitation)
 PATCH  /api/admin/users/:id                  ({ email?, firstName?, lastName?, jobTitle?, role?, status? })
+POST   /api/admin/users/:id/handover         ({ mode: "reassign", toUserId } or { mode: "queue" })
 POST   /api/admin/users/:id/password-reset
 POST   /api/admin/users/:id/sign-out
 GET    /api/admin/email-outbox
 GET    /api/admin/system
 ```
 
-Safeguards: administrators cannot change their own role or disable themselves, and at least one active administrator must remain. Audit actions: `USER_CREATED`, `USER_UPDATED`, `USER_ROLE_CHANGED`, `USER_DISABLED`, `USER_ENABLED`, `USER_SESSIONS_REVOKED`.
+Safeguards: administrators cannot change their own role or disable themselves, and at least one active administrator must remain. A person who still holds Assigned or In Progress tickets cannot be disabled or moved to Helpdesk (`409`) until those tickets are handed over: `reassign` gives them to another active employee (in-progress work returns to Assigned so the timer restarts, and the new assignee is notified), `queue` returns them to Helpdesk as Approved and unassigned. Each ticket's history records `TICKET_REASSIGNED` or `TICKET_RETURNED_TO_QUEUE` with the reason, and the audit log records `TICKETS_HANDED_OVER`. Audit actions: `USER_CREATED`, `USER_UPDATED`, `USER_ROLE_CHANGED`, `USER_DISABLED`, `USER_ENABLED`, `USER_SESSIONS_REVOKED`.
