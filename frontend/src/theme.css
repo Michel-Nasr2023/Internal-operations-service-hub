@@ -1,0 +1,1129 @@
+/* ==========================================================================
+   Visual theme — layered on top of styles.css (loaded after it).
+   One palette, soft backgrounds, glass surfaces, and consistent borders,
+   shadows and radii across every page.
+   ========================================================================== */
+
+:root {
+  --ink-900: #122027;
+  --ink-700: #2c3d47;
+  --ink-500: #5a6b75;
+  --ink-400: #7b8a92;
+
+  --brand-900: #0c2b27;
+  --brand-800: #123d37;
+  --brand-700: #1a524a;
+  --brand-600: #1e6a55;
+  --brand-500: #1e8a4c;
+  --brand-400: #35a466;
+  --brand-100: #e3f3ea;
+  --brand-50: #f2faf5;
+
+  --sky-500: #2f6fd6;
+  --amber-400: #f2b562;
+  --coral-600: #b24a33;
+
+  --surface: rgba(255, 255, 255, 0.97);
+  --surface-strong: rgba(255, 255, 255, 0.94);
+  --surface-muted: #f5f8f7;
+  --line: rgba(18, 32, 39, 0.08);
+  --line-strong: rgba(18, 32, 39, 0.14);
+
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 18px;
+  --radius-xl: 24px;
+
+  --shadow-sm: 0 1px 2px rgba(12, 43, 39, 0.06), 0 1px 1px rgba(12, 43, 39, 0.04);
+  --shadow-md: 0 1px 2px rgba(12, 43, 39, 0.05), 0 8px 24px -6px rgba(12, 43, 39, 0.12);
+  --shadow-lg: 0 2px 4px rgba(12, 43, 39, 0.04), 0 24px 56px -12px rgba(12, 43, 39, 0.22);
+  --ring: 0 0 0 4px rgba(30, 138, 76, 0.16);
+
+  color: var(--ink-900);
+}
+
+/* ---------- App background ----------
+   The whole page is a deep green-to-blue gradient with soft light glows and a faint contour-line
+   pattern, so every gap around the cards shows the same rich backdrop. */
+.dashboard-shell,
+.auth-shell {
+  background-color: #103a34;
+  background-image:
+    /* contour lines */
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='640' height='300' viewBox='0 0 640 300'%3E%3Cg fill='none' stroke='%23ffffff' stroke-opacity='.07' stroke-width='1.2'%3E%3Cpath d='M-20 210 C 80 150 180 250 300 190 S 520 120 660 180'/%3E%3Cpath d='M-20 240 C 90 180 190 280 310 220 S 530 150 660 210'/%3E%3Cpath d='M-20 180 C 70 120 170 220 290 160 S 510 90 660 150'/%3E%3Cpath d='M-20 150 C 60 90 160 190 280 130 S 500 60 660 120'/%3E%3Cpath d='M-20 120 C 50 60 150 160 270 100 S 490 30 660 90'/%3E%3Cpath d='M-20 90 C 40 30 140 130 260 70 S 480 0 660 60'/%3E%3Cpath d='M-20 270 C 100 210 200 310 320 250 S 540 180 660 240'/%3E%3C/g%3E%3C/svg%3E"),
+    /* light glows */
+    radial-gradient(640px 360px at 8% 0%, rgba(84, 214, 140, 0.32), transparent 70%),
+    radial-gradient(700px 420px at 96% 6%, rgba(92, 150, 255, 0.34), transparent 70%),
+    radial-gradient(720px 480px at 0% 100%, rgba(53, 164, 102, 0.28), transparent 70%),
+    radial-gradient(760px 520px at 100% 100%, rgba(242, 181, 98, 0.2), transparent 70%),
+    /* base gradient */
+    linear-gradient(150deg, #0c2f2a 0%, #124a42 38%, #185a5c 66%, #1d4f86 100%);
+  background-size: 640px 300px, 100% 100%, 100% 100%, 100% 100%, 100% 100%, 100% 100%;
+  background-repeat: repeat, no-repeat, no-repeat, no-repeat, no-repeat, no-repeat;
+}
+
+/* Section tabs and greeting sit on the dark band. */
+.dashboard-shell .tab-switch .tab-button {
+  color: rgba(234, 245, 239, 0.86);
+}
+
+.dashboard-shell .tab-switch .tab-button:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+}
+
+.dashboard-shell .tab-switch .tab-button-active,
+.dashboard-shell .tab-switch .tab-button-active:hover:not(:disabled) {
+  border-color: transparent;
+  background: #fff;
+  color: var(--brand-800);
+  box-shadow: 0 8px 20px -8px rgba(0, 0, 0, 0.45);
+}
+
+.dashboard-shell .greeting {
+  color: rgba(234, 245, 239, 0.75);
+}
+
+.dashboard-shell .greeting strong {
+  color: #fff;
+}
+
+
+.dashboard-shell {
+  padding: 1.25rem clamp(1rem, 2.4vw, 2rem) 1.5rem;
+}
+
+/* ---------- Top bar: floating glass bar ---------- */
+.topbar {
+  /* Its own layer above the page, so the profile menu and notifications open over the cards. */
+  position: relative;
+  z-index: 40;
+  margin-bottom: 1rem;
+  padding: .7rem .8rem .7rem 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  border-radius: var(--radius-lg);
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 18px 40px -18px rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(14px) saturate(140%);
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
+}
+
+.brand-mark {
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 12px;
+  background: linear-gradient(145deg, var(--brand-500), var(--brand-800));
+  box-shadow: 0 6px 16px -4px rgba(30, 106, 85, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+  font-size: .82rem;
+  letter-spacing: .06em;
+}
+
+.brand-name {
+  color: var(--ink-900);
+  letter-spacing: -0.01em;
+}
+
+.topbar .eyebrow {
+  color: var(--brand-600);
+}
+
+.topbar-actions {
+  gap: .6rem;
+}
+
+.bell-button {
+  display: grid;
+  place-items: center;
+  width: 2.6rem;
+  height: 2.6rem;
+  border: 1px solid var(--line);
+  background: var(--surface-strong);
+  color: var(--brand-700);
+  box-shadow: var(--shadow-sm);
+}
+
+.bell-button:hover:not(:disabled) {
+  background: #fff;
+  color: var(--brand-500);
+}
+
+.bell-badge {
+  border: 2px solid #fff;
+  background: linear-gradient(145deg, #e0673f, #b8412a);
+  box-shadow: 0 2px 6px rgba(184, 65, 42, 0.4);
+}
+
+.profile-trigger {
+  border: 1px solid var(--line);
+  background: var(--surface-strong);
+  box-shadow: var(--shadow-sm);
+}
+
+/* ---------- Section tabs: segmented control + greeting ---------- */
+.tab-switch {
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .25rem;
+  margin-bottom: 1rem;
+}
+
+.tab-switch .tab-button:first-child {
+  margin-left: 0;
+}
+
+.tab-button {
+  padding: .6rem 1.05rem;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink-700);
+  font-size: .86rem;
+  font-weight: 600;
+  transition: background .15s, color .15s, box-shadow .15s;
+}
+
+.tab-button:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.7);
+  color: var(--ink-900);
+}
+
+.tab-button-active,
+.tab-button-active:hover:not(:disabled) {
+  border-color: rgba(255, 255, 255, 0.4);
+  background: linear-gradient(145deg, var(--brand-600), var(--brand-800));
+  color: #fff;
+  box-shadow: 0 6px 16px -6px rgba(18, 61, 55, 0.6);
+}
+
+.greeting {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: .15rem .6rem;
+  margin: 0 0 0 auto;
+  padding-right: .25rem;
+  color: var(--ink-500);
+  font-size: .82rem;
+}
+
+.greeting strong {
+  color: var(--ink-900);
+  font: 700 .98rem 'Space Grotesk', sans-serif;
+  letter-spacing: -0.01em;
+}
+
+/* ---------- Layout fix: wide tables scroll inside their card instead of stretching it ---------- */
+.employee-layout,
+.employee-layout > *,
+.service-desk,
+.service-desk-grid > *,
+.tickets-card,
+.form-card {
+  min-width: 0;
+}
+
+.page-heading:empty {
+  display: none;
+}
+
+/* ---------- Cards ---------- */
+.form-card,
+.tickets-card {
+  border: 1px solid rgba(255, 255, 255, 0.75);
+  border-radius: var(--radius-xl);
+  background: var(--surface);
+  box-shadow: var(--shadow-lg);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+}
+
+.form-card {
+  position: relative;
+  overflow: hidden auto;
+}
+
+/* A thin brand stripe across the top of the "New ticket" card. */
+.form-card::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: 4px;
+  background: linear-gradient(90deg, var(--brand-500), var(--sky-500), var(--amber-400));
+}
+
+.card-heading h2 {
+  color: var(--ink-900);
+  font-size: 1.4rem;
+  letter-spacing: -0.02em;
+}
+
+.status-dot {
+  padding: .25rem .6rem;
+  border-radius: 999px;
+  background: var(--brand-100);
+  color: var(--brand-600);
+  font-weight: 700;
+}
+
+.queue-stats {
+  gap: .4rem;
+}
+
+.queue-stats > span {
+  padding: .2rem .6rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface-strong);
+}
+
+.queue-stats > span:only-child {
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.refresh-button {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-strong);
+  color: var(--brand-700);
+  box-shadow: var(--shadow-sm);
+}
+
+.refresh-button:hover:not(:disabled) {
+  border-color: var(--brand-400);
+  background: #fff;
+  color: var(--brand-500);
+}
+
+/* ---------- Form controls ---------- */
+input:not([type='checkbox']):not([type='radio']):not([type='file']),
+select,
+textarea {
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--ink-900);
+  transition: border-color .15s, box-shadow .15s, background .15s;
+}
+
+input:not([type='checkbox']):not([type='radio']):not([type='file']):hover,
+select:hover,
+textarea:hover {
+  border-color: rgba(18, 32, 39, 0.24);
+}
+
+input:not([type='checkbox']):not([type='radio']):not([type='file']):focus,
+select:focus,
+textarea:focus {
+  border-color: var(--brand-500);
+  background: #fff;
+  box-shadow: var(--ring);
+  outline: none;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--ink-400);
+}
+
+label {
+  color: var(--ink-700);
+}
+
+.filter-bar {
+  padding: .9rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: #f5f8f7;
+}
+
+.filter-bar label {
+  color: var(--ink-500);
+  font-weight: 700;
+  letter-spacing: .02em;
+}
+
+/* ---------- Buttons ---------- */
+button {
+  border-radius: var(--radius-md);
+}
+
+button[type='submit']:not(.review-button):not(.link-button):not(.password-toggle),
+.action-confirm {
+  background: linear-gradient(180deg, #25995a, #1b7a45);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.25) inset, 0 8px 18px -8px rgba(27, 122, 69, 0.7);
+}
+
+button[type='submit']:not(.review-button):not(.link-button):not(.password-toggle):hover:not(:disabled),
+.action-confirm:hover:not(:disabled) {
+  background: linear-gradient(180deg, #22904f, #166a3b);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.25) inset, 0 12px 22px -8px rgba(27, 122, 69, 0.75);
+}
+
+.action-confirm-reject {
+  background: linear-gradient(180deg, #c05a40, #9c3d28);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.2) inset, 0 8px 18px -8px rgba(156, 61, 40, 0.65);
+}
+
+.action-confirm-reject:hover:not(:disabled) {
+  background: linear-gradient(180deg, #b1503a, #873322);
+}
+
+.review-button {
+  border-radius: 10px;
+}
+
+.review-button-outline {
+  background: #fff;
+  color: var(--brand-700);
+  box-shadow: inset 0 0 0 1.5px rgba(26, 82, 74, 0.55), var(--shadow-sm);
+}
+
+.review-button-outline:hover:not(:disabled) {
+  background: var(--brand-50);
+  box-shadow: inset 0 0 0 1.5px var(--brand-600), var(--shadow-sm);
+}
+
+.review-button-active {
+  background: linear-gradient(180deg, #25995a, #1b7a45);
+}
+
+.review-button-disabled,
+.review-button-disabled:disabled {
+  background: #eef2f1;
+  color: #a6b1ad;
+  box-shadow: none;
+}
+
+/* ---------- Tables ---------- */
+.table-scroll {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.tickets-table {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.tickets-table th,
+.table-scroll thead th {
+  background: linear-gradient(180deg, #f7faf9, #f0f5f3);
+  color: var(--ink-500);
+  font-size: .7rem;
+  letter-spacing: .08em;
+  border-bottom: 1px solid var(--line);
+}
+
+.tickets-table td {
+  border-bottom: 1px solid var(--line);
+}
+
+.tickets-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.tickets-table tbody tr {
+  transition: background .12s;
+}
+
+.tickets-table tbody tr:hover td {
+  background: rgba(30, 138, 76, 0.045);
+}
+
+.tickets-table td.mono {
+  color: var(--ink-500);
+  font-size: .82rem;
+}
+
+/* Compact cells so tables fit without sideways scrolling on normal screens. */
+.tickets-table th,
+.tickets-table td {
+  padding: .75rem .7rem;
+}
+
+.subject-cell {
+  display: grid;
+  gap: .15rem;
+  min-width: 11rem;
+  max-width: 22rem;
+}
+
+.subject-title {
+  color: var(--ink-900);
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.subject-description {
+  overflow: hidden;
+  color: var(--ink-500);
+  font-size: .8rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stacked-cell {
+  display: grid;
+  gap: .1rem;
+  line-height: 1.25;
+}
+
+.stacked-cell small {
+  color: var(--ink-500);
+  font-size: .76rem;
+}
+
+.stacked-cell > span {
+  white-space: nowrap;
+}
+
+/* Page content uses the same full width as the top bar on wide screens. */
+.service-desk {
+  max-width: none;
+}
+
+.project-cell {
+  max-width: 9rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tickets-table .person-chip {
+  white-space: nowrap;
+}
+
+/* The last column holds the row's buttons: keep it pinned to the right edge while the table scrolls sideways. */
+.tickets-table th:last-child,
+.tickets-table td:last-child {
+  position: sticky;
+  right: 0;
+  z-index: 1;
+  box-shadow: -10px 0 14px -12px rgba(12, 43, 39, 0.35);
+}
+
+.tickets-table td:last-child {
+  background: rgba(255, 255, 255, 0.96);
+}
+
+.tickets-table th:last-child {
+  z-index: 2;
+}
+
+.tickets-table tbody tr:hover td:last-child {
+  background: #f4f9f6;
+}
+
+.tickets-table tr.ticket-row-new td:last-child {
+  background: #eef6ff;
+}
+
+/* ---------- Status and label pills ---------- */
+.status-pill,
+.role-pill,
+.load-pill,
+.ai-tag {
+  border: 1px solid rgba(18, 32, 39, 0.06);
+  font-weight: 700;
+  letter-spacing: .01em;
+}
+
+.status-pill::before {
+  content: '';
+  display: inline-block;
+  width: .42rem;
+  height: .42rem;
+  margin-right: .38rem;
+  border-radius: 999px;
+  background: currentColor;
+  opacity: .75;
+  vertical-align: middle;
+}
+
+/* ---------- Modals ---------- */
+.modal-overlay {
+  /* Above the top bar (40) and its menus, so a dialog is never covered. */
+  z-index: 100;
+  background: rgba(10, 30, 28, 0.42);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  animation: overlay-in .18s ease-out;
+}
+
+.modal-card,
+.logout-modal-card {
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  border-radius: var(--radius-xl);
+  background: #fff;
+  box-shadow: 0 40px 90px -20px rgba(8, 30, 27, 0.45);
+  animation: card-in .22s cubic-bezier(.2, .8, .2, 1);
+}
+
+.modal-card .modal-header {
+  margin: calc(-1 * clamp(1.5rem, 3vw, 2rem)) calc(-1 * clamp(1.5rem, 3vw, 2rem)) 1.25rem;
+  padding: clamp(1.5rem, 3vw, 2rem) clamp(1.5rem, 3vw, 2rem) 1.1rem;
+  border-bottom: 1px solid var(--line);
+  background: linear-gradient(180deg, var(--brand-50), rgba(255, 255, 255, 0));
+  border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+}
+
+.modal-meta,
+.settings-readonly {
+  padding: 1rem 1.1rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface-muted);
+}
+
+.icon-button,
+.modal-close {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--ink-500);
+}
+
+.icon-button:hover:not(:disabled) {
+  background: var(--surface-muted);
+  color: var(--ink-900);
+  transform: none;
+}
+
+@keyframes overlay-in {
+  from { opacity: 0; }
+}
+
+@keyframes card-in {
+  from { opacity: 0; transform: translateY(10px) scale(.985); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .modal-overlay,
+  .modal-card,
+  .logout-modal-card {
+    animation: none;
+  }
+}
+
+/* ---------- Panels inside modals ---------- */
+.ai-analysis,
+.resolution-note,
+.admin-panel,
+.handover-panel,
+.handled-by-list li,
+.comment-item,
+.attachment-list li,
+.history-list li,
+.access-action,
+.preference-row {
+  border-radius: var(--radius-md);
+}
+
+.ai-analysis {
+  border: 1px solid rgba(30, 138, 76, 0.2);
+  background: linear-gradient(160deg, #f4fbf7, #eef7f2);
+}
+
+.comment-item {
+  border: 1px solid var(--line);
+  background: #fff;
+}
+
+.attachment-list li,
+.access-action,
+.preference-row,
+.handled-by-list li {
+  border: 1px solid var(--line);
+  background: var(--surface-muted);
+}
+
+/* ---------- Dropdowns ---------- */
+.notification-panel,
+.profile-dropdown {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 30px 60px -18px rgba(8, 30, 27, 0.35);
+}
+
+/* ---------- Admin tiles and panels ---------- */
+.stat-tile {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: linear-gradient(160deg, #ffffff, #f6faf8);
+  box-shadow: var(--shadow-sm);
+  transition: transform .15s, box-shadow .15s;
+}
+
+.stat-tile::after {
+  content: '';
+  position: absolute;
+  top: -40%;
+  right: -20%;
+  width: 60%;
+  height: 120%;
+  background: radial-gradient(closest-side, rgba(30, 138, 76, 0.1), transparent);
+  pointer-events: none;
+}
+
+.stat-tile:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+.stat-tile-warn {
+  background: linear-gradient(160deg, #fffaf0, #fff4e0);
+}
+
+.stat-tile-alert {
+  background: linear-gradient(160deg, #fff6f3, #fdebe5);
+}
+
+.admin-panel {
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.86);
+  box-shadow: var(--shadow-sm);
+}
+
+.bar-track {
+  background: #e9efec;
+}
+
+.bar-fill {
+  background: linear-gradient(90deg, var(--brand-400), var(--brand-600));
+}
+
+.bar-fill-neutral {
+  background: linear-gradient(90deg, #5b92e8, var(--sky-500));
+}
+
+/* ==========================================================================
+   Sign-in, sign-up and password pages: brand panel + form card
+   ========================================================================== */
+.auth-shell {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+  align-items: stretch;
+  gap: 0;
+  padding: clamp(.75rem, 2vw, 1.25rem);
+}
+
+.auth-showcase {
+  position: relative;
+  display: flex;
+  overflow: hidden;
+  border-radius: 28px;
+  background:
+    radial-gradient(600px 400px at 0% 0%, rgba(53, 164, 102, 0.55), transparent 60%),
+    radial-gradient(500px 420px at 100% 100%, rgba(47, 111, 214, 0.45), transparent 60%),
+    linear-gradient(155deg, var(--brand-700), var(--brand-900));
+  color: #eaf5ef;
+  box-shadow: var(--shadow-lg);
+}
+
+/* Subtle grid texture on the brand panel. */
+.auth-showcase::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.06) 1px, transparent 1px);
+  background-size: 36px 36px;
+  mask-image: radial-gradient(ellipse at 30% 30%, #000 20%, transparent 75%);
+  -webkit-mask-image: radial-gradient(ellipse at 30% 30%, #000 20%, transparent 75%);
+  pointer-events: none;
+}
+
+.auth-showcase-inner {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  width: 100%;
+  max-width: 560px;
+  margin: auto;
+  padding: clamp(2rem, 4vw, 3.25rem);
+}
+
+.auth-showcase-brand {
+  display: flex;
+  align-items: center;
+  gap: .7rem;
+  font: 700 1rem 'Space Grotesk', sans-serif;
+}
+
+.auth-showcase-brand .brand-mark {
+  background: rgba(255, 255, 255, 0.16);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.3);
+}
+
+.auth-showcase h2 {
+  margin: .5rem 0 0;
+  color: #fff;
+  font-size: clamp(1.9rem, 3vw, 2.6rem);
+  line-height: 1.08;
+  letter-spacing: -0.03em;
+}
+
+.auth-showcase-lead {
+  margin: 0;
+  max-width: 34rem;
+  color: rgba(234, 245, 239, 0.82);
+  font-size: 1.02rem;
+  line-height: 1.6;
+}
+
+.auth-showcase-art {
+  width: 100%;
+  max-width: 440px;
+  height: auto;
+  margin: .25rem 0;
+}
+
+.auth-showcase-features {
+  display: grid;
+  gap: .9rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.auth-showcase-features li {
+  display: flex;
+  gap: .75rem;
+}
+
+.auth-showcase-features strong {
+  display: block;
+  color: #fff;
+  font-size: .95rem;
+}
+
+.auth-showcase-features small {
+  color: rgba(234, 245, 239, 0.75);
+  font-size: .84rem;
+  line-height: 1.5;
+}
+
+.auth-showcase-check {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 1.6rem;
+  height: 1.6rem;
+  margin-top: .1rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.16);
+  color: #9ff0c0;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.25);
+}
+
+.auth-card {
+  align-self: center;
+  justify-self: center;
+  width: min(100%, 540px);
+  margin: 1.5rem;
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  border-radius: var(--radius-xl);
+  background: rgba(255, 255, 255, 0.97);
+  box-shadow: 0 30px 70px -20px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+.auth-card h1 {
+  font-size: clamp(2rem, 3vw, 2.5rem);
+  letter-spacing: -0.035em;
+}
+
+.auth-card .brand {
+  display: none;
+}
+
+.auth-card .eyebrow {
+  color: var(--brand-600);
+}
+
+.auth-form button[type='submit'] {
+  padding: .95rem 1.1rem;
+  font-size: 1rem;
+}
+
+.login-credentials {
+  padding: 1rem;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface-muted);
+}
+
+/* ---------- Sign-in pages fit the window: no page scrolling on laptop and desktop screens ---------- */
+.auth-shell {
+  height: 100vh;
+  overflow: auto;
+}
+
+.auth-showcase-inner {
+  gap: clamp(.6rem, 1.8vh, 1.25rem);
+  padding: clamp(1.5rem, 4vh, 3rem) clamp(1.75rem, 3.5vw, 3rem);
+}
+
+.auth-showcase h2 {
+  margin-top: 0;
+  font-size: clamp(1.7rem, min(2.8vw, 4.6vh), 2.5rem);
+}
+
+.auth-showcase-lead {
+  font-size: .98rem;
+}
+
+.auth-showcase-art {
+  max-width: 400px;
+  max-height: 24vh;
+}
+
+.auth-showcase-features {
+  gap: clamp(.45rem, 1.3vh, .9rem);
+}
+
+.auth-card {
+  max-height: calc(100vh - 2.5rem);
+  margin: 0 1.5rem;
+  padding: clamp(1.4rem, 3.6vh, 2.75rem) clamp(1.5rem, 3vw, 2.75rem);
+  overflow-y: auto;
+}
+
+.auth-card h1 {
+  margin-bottom: clamp(.6rem, 2vh, 1.25rem);
+}
+
+.auth-form {
+  gap: clamp(.7rem, 1.8vh, 1.1rem);
+}
+
+.auth-form input:not([type='checkbox']) {
+  padding-block: clamp(.6rem, 1.4vh, .85rem);
+}
+
+/* Development accounts: one account per line (role, email, password). */
+.login-credentials {
+  grid-template-columns: 1fr;
+  gap: .3rem;
+  margin-top: clamp(.8rem, 2vh, 1.25rem);
+  padding: .7rem .85rem;
+  font-size: .8rem;
+  line-height: 1.4;
+}
+
+.credential-row {
+  display: grid;
+  grid-template-columns: 6.2rem minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: .6rem;
+}
+
+.credential-row span {
+  overflow: hidden;
+  color: var(--ink-500);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.credential-row code {
+  padding: .05rem .4rem;
+  border-radius: 6px;
+  background: #fff;
+  color: var(--brand-700);
+  font: 600 .76rem 'Space Grotesk', monospace;
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.auth-switch {
+  margin-top: clamp(.6rem, 1.6vh, 1rem);
+}
+
+/* Shorter windows: drop the illustration, then the feature descriptions. */
+@media (max-height: 820px) {
+  .auth-showcase-art {
+    display: none;
+  }
+}
+
+@media (max-height: 640px) {
+  .auth-showcase-features small,
+  .auth-showcase-lead {
+    display: none;
+  }
+}
+
+@media (max-width: 960px) {
+  .auth-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .auth-showcase {
+    display: none;
+  }
+
+  .auth-card .brand {
+    display: flex;
+  }
+}
+
+/* Phones and small tablets: the whole page scrolls (instead of each card scrolling inside a fixed-height
+   screen), and the section tabs become a single swipeable row. */
+@media (max-width: 800px) {
+  body {
+    overflow: auto;
+  }
+
+  .dashboard-shell {
+    height: auto;
+    min-height: 100vh;
+    overflow: visible;
+    /* Fixed backgrounds are unreliable on phones; let the glow scroll with the page instead. */
+    background-attachment: scroll;
+  }
+
+  .employee-layout {
+    display: block;
+  }
+
+  .service-desk,
+  .service-desk-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .form-card,
+  .tickets-card {
+    overflow: visible;
+    padding: 1.25rem;
+  }
+
+  .table-scroll {
+    max-height: 70vh;
+  }
+
+  .tab-switch {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+    margin-inline: -.25rem;
+    padding: .15rem .25rem .35rem;
+  }
+
+  .tab-switch::-webkit-scrollbar {
+    display: none;
+  }
+
+  .tab-button {
+    flex: 0 0 auto;
+  }
+
+  .card-heading {
+    flex-wrap: wrap;
+  }
+
+  .filter-bar select,
+  .filter-bar input {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .filter-bar label {
+    flex: 1 1 140px;
+  }
+}
+
+@media (max-width: 720px) {
+  .greeting {
+    display: none;
+  }
+
+  .topbar {
+    padding: .55rem .6rem;
+  }
+
+  .auth-card {
+    margin: .5rem;
+  }
+}
+
+/* Shorter screens (e.g. 1920×1080 at 125% scaling): tighten the "New ticket" form so it fits without scrolling. */
+@media (min-width: 801px) and (max-height: 900px) {
+  .form-card {
+    padding-block: 1.25rem;
+  }
+
+  .form-card .card-heading {
+    margin-bottom: .75rem;
+  }
+
+  .form-card form {
+    gap: .7rem;
+  }
+
+  .form-card label {
+    gap: .3rem;
+  }
+
+  .form-card input:not([type='checkbox']):not([type='file']),
+  .form-card select {
+    padding-block: .55rem;
+  }
+
+  .form-card textarea {
+    height: 5.2rem;
+    min-height: 4rem;
+  }
+
+  .form-card .attachment-drop {
+    padding: .5rem .8rem;
+  }
+
+  /* The allowed file types are still checked, and listed in the error if a file is refused. */
+  .form-card .attachment-drop small {
+    display: none;
+  }
+
+  .form-card select {
+    padding-inline: .7rem 1.4rem;
+  }
+
+  .form-card button[type='submit'] {
+    padding-block: .75rem;
+  }
+}
+
+/* Slim, quiet scrollbars inside cards and tables. */
+.form-card,
+.tickets-card,
+.table-scroll,
+.modal-card,
+.admin-overview-scroll,
+.auth-card {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(18, 32, 39, 0.22) transparent;
+}
+
+.form-card::-webkit-scrollbar,
+.table-scroll::-webkit-scrollbar,
+.modal-card::-webkit-scrollbar,
+.admin-overview-scroll::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.form-card::-webkit-scrollbar-thumb,
+.table-scroll::-webkit-scrollbar-thumb,
+.modal-card::-webkit-scrollbar-thumb,
+.admin-overview-scroll::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(18, 32, 39, 0.2);
+}

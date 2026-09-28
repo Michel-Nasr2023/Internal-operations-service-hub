@@ -4,7 +4,7 @@ import { TicketAiAnalysisPanel } from '../helpdesk/TicketAiAnalysisPanel';
 import { uploadAttachments } from '../../api/attachments';
 import { AttachmentPicker } from './AttachmentPicker';
 import { TicketAttachments } from './TicketAttachments';
-import { AttachmentCount } from './AttachmentCount';
+import { labelCase, StackedCell, SubjectCell } from './TableCells';
 import { PersonChip } from '../profile/PersonChip';
 import { TicketComments } from './TicketComments';
 import { TicketHistory } from './TicketHistory';
@@ -31,6 +31,11 @@ function formatCountdown(dueAt: string | undefined, now: number): string {
   if (remainingMs <= 0) return 'Overdue';
 
   const totalSeconds = Math.floor(remainingMs / 1000);
+  // More than two days left: "3 d 4 h" reads better than a large hour count.
+  if (totalSeconds >= 48 * 3600) {
+    const days = Math.floor(totalSeconds / 86400);
+    return `${days.toLocaleString()} d ${Math.floor((totalSeconds % 86400) / 3600)} h`;
+  }
   const hours = Math.floor(totalSeconds / 3600);
   const minutes = Math.floor((totalSeconds % 3600) / 60);
   const seconds = totalSeconds % 60;
@@ -219,7 +224,7 @@ export function AssignedTicketsPage({ userId, externalOpenTicketId, onExternalOp
                 <tr>
                   <th>Ticket</th>
                   <th>Subject</th>
-                  <th>Description</th>
+                  <th>Team · Project</th>
                   <th>Priority</th>
                   <th>Status</th>
                   <th>Time remaining</th>
@@ -238,11 +243,8 @@ export function AssignedTicketsPage({ userId, externalOpenTicketId, onExternalOp
                         {ticket.id.slice(0, 8)}
                         {isUnseen(ticket) && <span className="new-badge">New</span>}
                       </td>
-                      <td>
-                        {ticket.title}
-                        <AttachmentCount count={ticket.attachmentCount} />
-                      </td>
-                      <td className="description-cell" title={ticket.aiResult?.clarifiedDescription ?? ticket.description}>{ticket.aiResult?.clarifiedDescription ?? ticket.description}</td>
+                      <td><SubjectCell ticket={ticket} /></td>
+                      <td><StackedCell primary={TEAM_LABELS[ticket.teamId] ?? ticket.teamId} secondary={`${labelCase(ticket.issueType)} · ${ticket.project}`} /></td>
                       <td className="capitalize">{ticket.priority ?? '—'}</td>
                       <td><span className={`status-pill status-${statusSlug(ticket.status)}`}>{ticket.status}</span></td>
                       <td className="mono">{ticket.status === 'In Progress' ? formatCountdown(ticket.dueAt, now) : '—'}</td>
@@ -293,7 +295,7 @@ export function AssignedTicketsPage({ userId, externalOpenTicketId, onExternalOp
               <div><dt>Requester</dt><dd><PersonChip userId={reviewTicket.requesterId} name={reviewTicket.requesterName} avatarUpdatedAt={reviewTicket.requesterAvatarUpdatedAt} /></dd></div>
               <div><dt>Team</dt><dd>{TEAM_LABELS[reviewTicket.teamId] ?? reviewTicket.teamId}</dd></div>
               <div><dt>Type</dt><dd className="capitalize">{reviewTicket.issueType}</dd></div>
-              <div><dt>Project</dt><dd>{reviewTicket.project}</dd></div>
+              <div><dt>Project / area</dt><dd>{reviewTicket.project}</dd></div>
               <div><dt>Status</dt><dd><span className={`status-pill status-${statusSlug(reviewTicket.status)}`}>{reviewTicket.status}</span></dd></div>
               <div><dt>Priority</dt><dd className="capitalize">{reviewTicket.priority ?? '—'}</dd></div>
               <div><dt>Submitted</dt><dd>{formatDateTime(reviewTicket.createdAt)}</dd></div>

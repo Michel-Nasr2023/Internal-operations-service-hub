@@ -3,7 +3,7 @@ import { createTicket, CreateTicketInput, getMyTickets, Ticket } from '../../api
 import { uploadAttachments } from '../../api/attachments';
 import { AttachmentPicker } from './AttachmentPicker';
 import { TicketAttachments } from './TicketAttachments';
-import { AttachmentCount } from './AttachmentCount';
+import { DateCell, labelCase, StackedCell, SubjectCell } from './TableCells';
 import { PersonChip } from '../profile/PersonChip';
 import { TicketComments } from './TicketComments';
 import { TicketHistory } from './TicketHistory';
@@ -220,9 +220,7 @@ export function CreateTicketPage({ userId, externalOpenTicketId, onExternalOpenH
                   <tr>
                     <th>Ticket</th>
                     <th>Subject</th>
-                    <th>Team</th>
-                    <th>Type</th>
-                    <th>Project</th>
+                    <th>Team · Type · Project</th>
                     <th>Status</th>
                     <th>Submitted</th>
                     <th>Action</th>
@@ -232,15 +230,10 @@ export function CreateTicketPage({ userId, externalOpenTicketId, onExternalOpenH
                   {filteredTickets.map((ticket) => (
                     <tr key={ticket.id}>
                       <td className="mono">{ticket.id.slice(0, 8)}</td>
-                      <td>
-                        {ticket.title}
-                        <AttachmentCount count={ticket.attachmentCount} />
-                      </td>
-                      <td>{TEAM_LABELS[ticket.teamId] ?? ticket.teamId}</td>
-                      <td className="capitalize">{ticket.issueType}</td>
-                      <td>{ticket.project}</td>
+                      <td><SubjectCell ticket={{ ...ticket, aiResult: undefined }} /></td>
+                      <td><StackedCell primary={TEAM_LABELS[ticket.teamId] ?? ticket.teamId} secondary={`${labelCase(ticket.issueType)} · ${ticket.project}`} /></td>
                       <td><span className={`status-pill status-${statusSlug(ticket.status)}`}>{displayStatus(ticket.status)}</span></td>
-                      <td>{new Date(ticket.createdAt).toLocaleString()}</td>
+                      <td><DateCell value={ticket.createdAt} /></td>
                       <td>
                         <button
                           type="button"
@@ -273,6 +266,7 @@ export function CreateTicketPage({ userId, externalOpenTicketId, onExternalOpenH
             <dl className="modal-meta">
               <div><dt>Team</dt><dd>{TEAM_LABELS[reviewTicket.teamId] ?? reviewTicket.teamId}</dd></div>
               <div><dt>Type</dt><dd className="capitalize">{reviewTicket.issueType}</dd></div>
+              <div><dt>Project / area</dt><dd>{reviewTicket.project}</dd></div>
               <div><dt>Status</dt><dd><span className={`status-pill status-${statusSlug(reviewTicket.status)}`}>{reviewTicket.status}</span></dd></div>
               <div><dt>Submitted</dt><dd>{new Date(reviewTicket.createdAt).toLocaleString()}</dd></div>
               {reviewTicket.priority && <div><dt>Priority</dt><dd className="capitalize">{reviewTicket.priority}</dd></div>}

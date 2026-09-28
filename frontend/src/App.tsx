@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { AuthShowcase } from './features/auth/AuthShowcase';
 import { AuthUser, clearStoredUser, loadStoredUser, loginUser, logoutUser, saveStoredUser, SESSION_EXPIRED_EVENT } from './api/auth';
 import { CreateTicketPage } from './features/tickets/CreateTicketPage';
 import { AssignedTicketsPage } from './features/tickets/AssignedTicketsPage';
@@ -9,10 +10,12 @@ import { NotificationBell } from './features/notifications/NotificationBell';
 import { SignUpPage } from './features/auth/SignUpPage';
 import { ForgotPasswordPage } from './features/auth/ForgotPasswordPage';
 import { ResetPasswordPage } from './features/auth/ResetPasswordPage';
+import { PasswordInput } from './features/auth/PasswordInput';
 import { AdminOverviewPage } from './features/admin/AdminOverviewPage';
 import { AdminUsersPage } from './features/admin/AdminUsersPage';
 import { AdminSystemPage } from './features/admin/AdminSystemPage';
 import { ProfileMenu, SettingsTab } from './features/profile/ProfileMenu';
+import { Greeting } from './features/profile/Greeting';
 import { ProfileSettingsModal } from './features/profile/ProfileSettingsModal';
 import { getProfile } from './api/profile';
 import { getMyTickets } from './api/tickets';
@@ -203,6 +206,7 @@ export function App() {
   if (!user) {
     return (
       <main className="auth-shell">
+        <AuthShowcase />
         <section className="auth-card">
           <div className="brand">
             <span className="brand-mark">OPS</span>
@@ -210,7 +214,6 @@ export function App() {
           </div>
           <p className="eyebrow">SERVICE DESK</p>
           <h1>Sign in</h1>
-          <p className="auth-copy">Sign in with your company account to submit a ticket or manage the Helpdesk queue.</p>
 
           <form onSubmit={handleLogin} className="auth-form">
             <label>
@@ -230,8 +233,7 @@ export function App() {
                 Password
                 <button type="button" className="link-button forgot-link" onClick={() => { setError(''); setAuthView('forgot'); }}>Forgot password?</button>
               </span>
-              <input
-                type="password"
+              <PasswordInput
                 value={form.password}
                 onChange={(event) => setForm((current) => ({ ...current, password: event.target.value }))}
                 placeholder="Enter password"
@@ -247,9 +249,9 @@ export function App() {
 
           <div className="login-credentials">
             <p className="credentials-title">Development accounts</p>
-            <p><strong>Employee</strong><br />employee@company.com<br />employee123</p>
-            <p><strong>Helpdesk</strong><br />helpdesk@company.com<br />helpdesk123</p>
-            <p><strong>Administrator</strong><br />admin@company.com<br />Admin12345</p>
+            <p className="credential-row"><strong>Employee</strong><span>employee@company.com</span><code>employee123</code></p>
+            <p className="credential-row"><strong>Helpdesk</strong><span>helpdesk@company.com</span><code>helpdesk123</code></p>
+            <p className="credential-row"><strong>Administrator</strong><span>admin@company.com</span><code>Admin12345</code></p>
           </div>
 
           <p className="auth-switch">
@@ -293,6 +295,7 @@ export function App() {
               {tab.label}
             </button>
           ))}
+          <Greeting firstName={user.firstName} />
         </nav>
 
         <div className="employee-layout">
@@ -328,6 +331,7 @@ export function App() {
       <nav className="tab-switch">
         <button type="button" className={employeeTab === 'requests' ? 'tab-button tab-button-active' : 'tab-button'} onClick={() => setEmployeeTab('requests')}>New request</button>
         <button type="button" className={employeeTab === 'tasks' ? 'tab-button tab-button-active' : 'tab-button'} onClick={() => setEmployeeTab('tasks')}>My tasks</button>
+        <Greeting firstName={user.firstName} />
       </nav>
 
       <div className="employee-layout">

@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useState } from 'react';
+import { AuthShowcase } from './AuthShowcase';
 import { requestPasswordReset, resetPasswordWithCode, verifyResetCode } from '../../api/auth';
 import { passwordProblem, passwordStrength } from '../../api/profile';
 
@@ -100,6 +101,7 @@ export function ForgotPasswordPage({ initialEmail = '', onBackToLogin }: ForgotP
 
   return (
     <main className="auth-shell">
+      <AuthShowcase />
       <section className="auth-card">
         <div className="brand">
           <span className="brand-mark">OPS</span>

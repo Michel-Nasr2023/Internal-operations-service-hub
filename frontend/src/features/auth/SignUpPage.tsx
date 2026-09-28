@@ -1,5 +1,7 @@
 import { FormEvent, useState } from 'react';
+import { AuthShowcase } from './AuthShowcase';
 import { AuthUser, signupUser, SignupInput } from '../../api/auth';
+import { PasswordInput } from './PasswordInput';
 
 const initialForm: SignupInput = {
   email: '',
@@ -40,6 +42,7 @@ export function SignUpPage({ onSignedUp, onBackToLogin }: SignUpPageProps) {
 
   return (
     <main className="auth-shell">
+      <AuthShowcase />
       <section className="auth-card">
         <div className="brand">
           <span className="brand-mark">OPS</span>
@@ -47,7 +50,6 @@ export function SignUpPage({ onSignedUp, onBackToLogin }: SignUpPageProps) {
         </div>
         <p className="eyebrow">CREATE ACCOUNT</p>
         <h1>Sign up</h1>
-        <p className="auth-copy">Create your employee account. The account ID is assigned automatically; Helpdesk access is granted by an administrator.</p>
 
         <form onSubmit={handleSubmit} className="auth-form">
           <div className="field-grid">
@@ -68,7 +70,7 @@ export function SignUpPage({ onSignedUp, onBackToLogin }: SignUpPageProps) {
 
           <label>
             Password
-            <input type="password" value={form.password} onChange={(event) => updateField('password', event.target.value)} placeholder="At least 8 characters, letters and numbers" minLength={8} autoComplete="new-password" required />
+            <PasswordInput value={form.password} onChange={(event) => updateField('password', event.target.value)} placeholder="At least 8 characters, letters and numbers" minLength={8} autoComplete="new-password" required />
           </label>
 
           <label>

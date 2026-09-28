@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useState } from 'react';
+import { AuthShowcase } from './AuthShowcase';
 import { checkResetLink, resetPassword } from '../../api/auth';
 import { passwordProblem, passwordStrength } from '../../api/profile';
 
@@ -45,6 +46,7 @@ export function ResetPasswordPage({ token, onDone, onRequestNewLink }: ResetPass
 
   return (
     <main className="auth-shell">
+      <AuthShowcase />
       <section className="auth-card">
         <div className="brand">
           <span className="brand-mark">OPS</span>

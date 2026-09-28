@@ -4,7 +4,7 @@ import { DirectoryUser, listAssignableEmployees } from '../../api/auth';
 import { TicketAiAnalysisPanel } from './TicketAiAnalysisPanel';
 import { TicketAttachments } from '../tickets/TicketAttachments';
 import { PersonChip } from '../profile/PersonChip';
-import { AttachmentCount } from '../tickets/AttachmentCount';
+import { DateCell, labelCase, StackedCell, SubjectCell } from '../tickets/TableCells';
 import { TicketComments } from '../tickets/TicketComments';
 import { TicketHistory } from '../tickets/TicketHistory';
 import { TicketResolutionNote } from '../tickets/TicketResolutionNote';
@@ -355,11 +355,9 @@ export function HelpdeskDashboardPage({ currentUserId, externalOpenTicketId, onE
                 <tr>
                   <th>Ticket</th>
                   <th>Subject</th>
-                  <th>Description</th>
                   <th>Requester</th>
-                  <th>Team</th>
-                  <th>Type</th>
-                  <th>Project</th>
+                  <th>Team · Type</th>
+                  <th>Project / area</th>
                   <th>Status</th>
                   <th>Assigned by</th>
                   <th>Priority</th>
@@ -374,15 +372,10 @@ export function HelpdeskDashboardPage({ currentUserId, externalOpenTicketId, onE
                       {ticket.id.slice(0, 8)}
                       {isUnseen(ticket) && <span className="new-badge">New</span>}
                     </td>
-                    <td>
-                      {ticket.title}
-                      <AttachmentCount count={ticket.attachmentCount} />
-                    </td>
-                    <td className="description-cell" title={ticket.aiResult?.clarifiedDescription ?? ticket.description}>{ticket.aiResult?.clarifiedDescription ?? ticket.description}</td>
+                    <td><SubjectCell ticket={ticket} /></td>
                     <td><PersonChip userId={ticket.requesterId} name={ticket.requesterName} avatarUpdatedAt={ticket.requesterAvatarUpdatedAt} /></td>
-                    <td>{TEAM_LABELS[ticket.teamId] ?? ticket.teamId}</td>
-                    <td className="capitalize">{ticket.issueType}</td>
-                    <td>{ticket.project}</td>
+                    <td><StackedCell primary={TEAM_LABELS[ticket.teamId] ?? ticket.teamId} secondary={labelCase(ticket.issueType)} /></td>
+                    <td className="project-cell" title={ticket.project}>{ticket.project}</td>
                     <td>
                       <span className={`status-pill status-${statusSlug(ticket.status)}`}>{displayStatus(ticket.status)}</span>
                       {isOverdue(ticket, now) && <span className="status-pill status-rejected overdue-pill">Overdue</span>}
@@ -395,7 +388,7 @@ export function HelpdeskDashboardPage({ currentUserId, externalOpenTicketId, onE
                       )}
                     </td>
                     <td className="capitalize">{ticket.priority ?? '—'}</td>
-                    <td>{new Date(ticket.createdAt).toLocaleDateString()}</td>
+                    <td><DateCell value={ticket.createdAt} /></td>
                     <td>
                       <button type="button" className="review-button review-button-outline" onClick={() => openReview(ticket.id)}>Review</button>
                     </td>
@@ -422,6 +415,7 @@ export function HelpdeskDashboardPage({ currentUserId, externalOpenTicketId, onE
               <div><dt>Requester</dt><dd><PersonChip userId={reviewTicket.requesterId} name={reviewTicket.requesterName} avatarUpdatedAt={reviewTicket.requesterAvatarUpdatedAt} /></dd></div>
               <div><dt>Team</dt><dd>{TEAM_LABELS[reviewTicket.teamId] ?? reviewTicket.teamId}</dd></div>
               <div><dt>Type</dt><dd className="capitalize">{reviewTicket.issueType}</dd></div>
+              <div><dt>Project / area</dt><dd>{reviewTicket.project}</dd></div>
               <div><dt>Status</dt><dd><span className={`status-pill status-${statusSlug(reviewTicket.status)}`}>{reviewTicket.status}</span></dd></div>
               <div><dt>Priority</dt><dd className="capitalize">{reviewTicket.priority ?? '—'}</dd></div>
               <div><dt>Submitted</dt><dd>{new Date(reviewTicket.createdAt).toLocaleString()}</dd></div>
