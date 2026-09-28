@@ -1,106 +1,64 @@
-# Internal Operations Service Hub Data Model
+# Internal Operations Service Hub — Data Model
 
-## 1. Domain
+## 1. Tables
 
-### Core entities
+| Table | Purpose | Key fields |
+| --- | --- | --- |
+| `users` | Accounts | id, email (unique), password hash, role, name, job title, status (active/disabled), photo, `sessionsRevokedAt` |
+| `tickets` | The request and its workflow state | requester, team, issue type, project/area, title, description, status, priority, assignee, expected hours, claimed/due/resolved times, rejection reason, resolution notes, `reviewedBy`, `assignedBy`, AI result (JSON), history (JSON), version |
+| `ticket_comments` | Discussion on a ticket | ticket, author, text, time |
+| `ticket_attachments` | File metadata (bytes on disk) | ticket, uploader, stage (submission/resolution), file name, type, size, storage key |
+| `ticket_views` | When each user last opened a ticket ("new" highlight) | user, ticket, time |
+| `notifications` | In-app alerts, one row per recipient | recipient, ticket, kind, message, read time, dedupe key (unique per recipient) |
+| `audit_log` | Append-only system audit trail | time, category, action, outcome, actor, target, summary, IP, browser, request ID |
+| `password_reset_tokens` | Reset links, codes and invitations | user, token hash, code hash, attempts, expiry, used time |
+| `email_outbox` | Every email sent and its delivery status | recipient, subject, body, status (sent/failed/not sent), error |
 
-| Entity                               | Purpose and important attributes                                                                                                                                       | Ownership                                                                                                                          |
-| ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| **User**                             | Employee identity from the identity provider: `id`, name, department, active status                                                                                    | Identity provider is authoritative; the service stores a reference and role/department snapshot needed for authorization and audit |
-| **Role / Membership**                | User's role and team membership, such as employee, Helpdesk, assignee, or administrator                                                                             | Organization/identity administration                                                                                               |
-| **Team**                             | Operational queue that receives work, with a team leader and supported issue types/projects                                                                            | Operations administration                                                                                                          |
-| **Project**                          | Business or technical context used for routing                                                                                                                         | Operations administration                                                                                                          |
-| **Issue type**                       | Category used with project to determine the target team                                                                                                                | Operations administration                                                                                                          |
-| **Ticket**                           | The request being processed: requester, department, issue type, project, title, description, priority, current state, timestamps, and version                          | Workflow service; requester owns the business request, but the service owns workflow state                                         |
-| **Assignment**                       | The assignment of a ticket to a team and one assignee; includes assigned-by, assignment time, expected completion time, claim time, and resolution time | Helpdesk manages it; workflow service enforces it                                                                                  |
-| **Comment / Status update**          | Human progress notes and status context attached to a ticket                                                                                                           | Author owns the submitted content; ticket retains it                                                                               |
-| **Attachment**                      | Metadata and secure object-storage reference for files submitted with a ticket                                                       | Ticket retains metadata; object storage owns file bytes; access follows ticket authorization                                       |
-| **Approval**                         | Helpdesk approval decision and rejection reason                                                                                                                        | Helpdesk owns the decision; workflow service validates authorization                                          |
-| **Notification**                     | Durable alert request and delivery status for assignment, inactivity, deadline, rejection, completion, or requester updates                                            | Workflow service owns intent; notification provider owns delivery                                                                  |
-| **Audit event**                      | Append-only record of security- and workflow-relevant actions, including actor, action, old/new values, reason, and timestamp                                          | Workflow service; administrators may read but must not alter historical events                                                     |
+Fixed values: teams `it`, `facilities`, `finance`; issue types `hardware`, `software`, `network`, `access`; priorities `low`, `medium`, `high`, `urgent`; roles `employee`, `helpdesk`, `administrator`.
 
-### Relationships and cardinality
+## 2. Relationships
 
-- One **User** can create many **Tickets**; each ticket has exactly one requester.
-- One **Team** handles many tickets; each ticket has one routed team after routing.
-- One **Ticket** has status updates, attachments, approvals, notifications, and audit events.
-- One ticket has one Helpdesk review decision.
-- One **User** may be assignee for many assignments, but an assignment has at most one assignee. An assignment may be claimed by only its selected assignee.
+- A user requests many tickets; each ticket has exactly one requester.
+- A ticket has at most one current assignee (an active employee).
+- A ticket has many comments, attachments, notifications and history entries.
+- A ticket records one reviewer (approved/rejected by) and the person who assigned it.
 
-## 2. Lifecycle and Rules
-
-### Ticket state transitions
+## 3. Ticket lifecycle
 
 ```text
-Created by User
-  -> Pending Helpdesk Review
-  -> Approved -> Assigned -> In Progress
-  -> Resolved
+Pending Helpdesk Review ──approve──> Approved ──assign──> Assigned ──claim──> In Progress ──resolve──> Resolved
+        └──reject──> Rejected
+(approve + assign can happen in one step)
 ```
 
-| From                          | To                            | Allowed actor and required conditions                                   |
-| ----------------------------- | ----------------------------- | ----------------------------------------------------------------------- |
-| `Created`                     | `Pending Helpdesk Review`     | System after server-side validation succeeds and routing is recorded    |
-| `Pending Helpdesk Review`     | `Approved`                    | Helpdesk approves; priority is set                                      |
-| `Pending Helpdesk Review`     | `Rejected`                    | Helpdesk rejects with a non-empty explanation                           |
-| `Approved`                    | `Assigned`                    | Helpdesk assigns a team member and expected completion time              |
-| `Assigned`                    | `In Progress`                 | Selected assignee claims the ticket; `claimed_at` starts the work timer |
-| `In Progress`                 | `Resolved`                    | Assignee completes the work and marks the ticket resolved               |
+| Transition | Who | Rule |
+| --- | --- | --- |
+| → Pending Helpdesk Review | Employee | Valid fields; AI analysis starts in the background |
+| → Approved / Rejected | Helpdesk, admin | Priority required to approve; reason required to reject |
+| → Assigned | Helpdesk, admin | Active assignee and expected hours required |
+| → In Progress | Assignee (or admin) | Starts the timer; due time = claim time + expected hours |
+| → Resolved | Assignee (or admin) | Resolution notes required |
+| In Progress/Assigned → Assigned (other person) or → Approved | Administrator | Handover before disabling someone: reassign or return to queue |
 
-Each transition is controlled by the workflow service and creates an audit event.
+Every transition is added to the ticket history and to `audit_log`.
 
-### Invariants
+## 4. Rules
 
-- A ticket cannot be submitted without its required fields, a valid requester, issue type, project, and valid attachment metadata where required.
-- Every ticket has exactly one requester.
-- `priority` is one of `low`, `medium`, `high`, or `urgent`; it is set or changed only by Helpdesk according to policy.
-- `Rejected` requires a rejection explanation. Rejected tickets cannot be assigned or worked until an explicitly supported resubmission/reopen flow exists.
-- An active assignment requires a team, one assignee, and an expected completion time.
-- The work timer starts only once, when the assignee claims the ticket. Claiming is restricted to the selected assignee and requires the ticket to be in `Assigned`.
-- The expected completion time is measured from `claimed_at`; the ticket becomes overdue when that expected time is exceeded.
-- An unclaimed assignment older than 24 hours generates one alert to Helpdesk.
-- Only the assignee may mark an issue as resolved.
-- Audit events are append-only and include actor, action, timestamp, ticket ID, and correlation/request ID. Sensitive file contents and secrets are not copied into the audit log.
+- Priority, approval and assignment are Helpdesk/admin actions only.
+- Only the assignee (or an administrator) can claim and resolve; comments close when a ticket is resolved or rejected.
+- A 24 h unclaimed alert and an overdue alert are each sent once per ticket.
+- A user holding active tickets cannot be disabled or moved to Helpdesk until they are handed over.
+- There is always at least one active administrator; admins cannot disable or demote themselves.
+- Audit entries are never edited or deleted and never contain passwords or tokens.
 
-### Authorization-sensitive rules
+## 5. Access
 
-- Users may read tickets they requested, subject to organizational privacy rules.
-- Helpdesk may review, prioritize, and assign tickets; assignees may update only tickets assigned to them.
-- Authorization is evaluated server-side using current identity, role, department, team membership, and ticket relationship. Client-side controls are not security boundaries.
+| Data | Employee | Helpdesk | Administrator |
+| --- | --- | --- | --- |
+| Tickets, comments, files, history | Only tickets they requested or are assigned | All | All |
+| Activity log, team workload | — | Yes | Yes |
+| Users, system health, email outbox | — | — | Yes |
 
-## 3. Storage
+## 6. Derived data (calculated, not stored)
 
-### Relational versus document choice
-
-Use a relational database for workflow data. Foreign keys, unique constraints, transactions, optimistic concurrency, and filtered uniqueness are important for preventing multiple active assignments, duplicate approvals, and invalid state changes. The domain is highly relational and requires reporting across tickets, teams, users, deadlines, and audit records.
-
-A document store is not the primary store because embedding comments, approvals, and assignments would make concurrent updates, auditability, authorization joins, and cross-ticket dashboards harder. JSON columns may be used only for controlled, non-query-critical provider payloads or extensible form fields.
-
-### Durable data
-
-Persist:
-
-- User, role, team, department, project, issue type, and routing configuration references.
-- Ticket fields, current state, priority, requester/department snapshots, routing result, and timestamps.
-- Assignment history.
-- Status updates, approvals, rejection reasons, and resolution notes.
-- Append-only audit events.
-
-### Derived data
-
-Calculate or materialize these from durable data:
-
-- Open, in-progress, resolved, and overdue counts.
-- Whether a ticket is currently overdue or unclaimed for 24 hours.
-- Elapsed work duration from `claimed_at` and the current time.
-- Notification eligibility and dashboard aggregates.
-- Current assignee and current active assignment, when these are also available from assignment history.
-
-## 4. Access
-
-### Important access patterns
-
-1. Create a ticket.
-2. List Helpdesk's pending-review.
-3. List an assignee's active tickets ordered by expected completion time.
-4. Read one authorized ticket with its active assignment, latest status, comments, attachments, approvals, and recent audit events.
+Open / in-progress / overdue counts, workload per employee, "new" tickets per user, time remaining, and last sign-in.

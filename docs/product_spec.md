@@ -1,91 +1,106 @@
-# title: Internal Operations Service hub
+# Internal Operations Service Hub — Product Specification
 
-## 1. Context:
+## 1. Context
 
-    The organization has many requests as issues and needs fixing.
-    requests come through a helpDesk system.
+Employees raise operational issues (IT, facilities, finance). Requests must be tracked from creation to resolution through a Helpdesk.
 
-## 2. Known facts:
+## 2. Known facts
 
-    -The system is for internal staff , not for customers
-    -There are multiple operational teams
-    -requests must be tracked from creation to resolution
+- Internal staff only, not customers.
+- Several operational teams: IT Operations, Facilities, Finance.
+- Every request is tracked from creation to resolution.
 
-## 3. Actors
+## 3. Actors and roles
 
-Employees/ Team leader/ IT Team/ security/ Admin/ System Administrator / helpdesk team
+| Role | Can do |
+| --- | --- |
+| **Employee** | Submit and follow own tickets; work on tickets assigned to them (the "assignee") |
+| **Helpdesk** | Review, prioritise, approve/reject and assign every ticket; see team workload and activity log |
+| **Administrator** | Everything Helpdesk can do, plus manage users and view system health |
 
-## 4. Stakeholders:
+Sign-up always creates an Employee. Helpdesk and Administrator roles are granted by an administrator (or with the `npm run user:role` script).
 
-Employees/ Department managers/ IT Team/ HR/ BA/ Finance department/ Procurement/ Security team/ HelpDesk Team
+## 4. Stakeholders
 
-## 5. Functional requirements:
+Employees, department managers, IT team, HR, finance, procurement, security team, Helpdesk team.
 
-1. Allowance of every employee to send a request for issues.
+## 5. Functional requirements
 
-2. System check and validates all fields before submitting the issue
-   2.1 If fields are wrong, the system won't allow submission of the issue.
+**Ticket workflow**
 
-3. Helpdesk Team can approve or reject requests
-   3.1 In case of a rejection, an explanation is required.
+1. Every employee can submit a ticket (subject, description, team, issue type, project/area).
+2. All fields are validated before submission; invalid input is refused (in the browser and on the server).
+3. Helpdesk approves or rejects tickets; a rejection requires a reason.
+4. Helpdesk sets the priority: low, medium, high or urgent.
+5. Helpdesk assigns an active employee and the expected hours (can be done in the same step as approval); each employee's current workload is shown while choosing.
+6. The work timer starts when the assignee claims the ticket.
+   - 6.1 If not claimed within 24 hours, Helpdesk is notified.
+7. Claiming sets the status to "In Progress"; the assignee sees the time remaining.
+   - 7.1 If work passes its expected time, Helpdesk is notified.
+8. The assignee resolves the ticket with resolution notes.
+9. Helpdesk (and the requester) are notified when it is resolved.
 
-4. Helpdesk Team will set priority levels: low, medium, high, urgent
+**Collaboration**
 
-5. Helpdesk Team will assign a clear assignee with the expected time to finish the task.
+10. Requester, assignee and Helpdesk can comment on an open ticket; the others are notified.
+11. Optional attachments: the requester when submitting, the assignee when resolving (images, PDF, text, Word, Excel; 10 MB each, up to 10 per ticket). Tables show a 📎 count.
+12. Every ticket shows who approved/assigned it, its full history, and its attachments.
 
-6. The timer starts when the assignee claims the issue.
-   6.1 If the assignee does not claim the issue within 24 hours, the system will notify the Helpdesk Team.
+**AI assistance**
 
-7. The assignee works on the issue and the status is updated to "In Progress".
-   7.1 If the issue remains in progress beyond the expected completion time, the system will notify the Helpdesk Team.
+13. On submission, an AI model rewrites the description for Helpdesk, suggests issue type and severity, recommends a first step and lists questions to ask. Unclear tickets are flagged. If the AI fails, the ticket is marked "AI analysis failed" and Helpdesk can retry. The employee's original description is always shown as well.
 
-8. On completion of the issue, the assignee must update the status of the ticket to "Resolved".
+**Notifications**
 
-9. The Helpdesk Team is notified when the status is "Resolved".
+14. In-app notification bell (with a sound that can be turned off) for: new ticket, approved, rejected, assigned, unclaimed 24 h, overdue, resolved, new comment. Clicking a notification opens the ticket.
 
-## 6. Non-Fonctional requirements
+**Helpdesk and administration**
 
--Fast response time for common operations
--Reliable uptime for internal business continuity
--Data privacy
--Audit trail for all actions
--Easy to use on desktop and mobile
--Clear UI for non-technical staff
+15. Every ticket table (Helpdesk queue, My tickets, My tasks) can be filtered and sorted. The Helpdesk queue adds search, a "handled by me" filter and counters (new, awaiting review, open, in progress, overdue). Tickets not yet opened are highlighted in the queue and in My tasks.
+16. Team workload view per employee: active, awaiting claim, overdue, next due and resolved in the last 30 days, with a load level.
+17. Activity log of all sign-in, access and ticket events, with filters and search.
+18. Administrators: overview dashboard (users, tickets, AI status, recent security events), add users (they receive an invitation email to set their own password), edit details and roles, disable accounts (after handing over their tickets), send reset links, sign users out everywhere, system health and email outbox.
 
-## 7.Assumptions
+**Accounts**
 
-- Users are employees of the organization
-- An identity of the employee exists
-- Requests are mostly sent by team leaders
-- Most workflows are not highly complex but require structured tracking
-- The project is focused on internal use only
+19. Sign-up, sign-in and sign-out (with show/hide password); profile photo (shown next to the person's name across the app), personal details, password change and notification sound setting.
+20. Forgot password: 6-digit code and single-use link sent by email.
+
+## 6. Non-functional requirements
+
+- Fast response for common operations; ticket submission does not wait for the AI.
+- Data privacy: employees only see their own tickets; files and history follow the same rule.
+- Security: hashed passwords, signed sessions that can be revoked, server-side validation.
+- Audit trail for all workflow, sign-in and access-denied events.
+- Usable on desktop and mobile; clear UI for non-technical staff.
+
+## 7. Assumptions
+
+- Users are employees of the organisation with a company email.
+- Workflows are simple but need structured tracking.
+- Internal use only.
 
 ## 8. Constraints
 
-    -Limited budget for implementation
-    -Small team for development and testing
-    -Need to check organization policies
+- Limited budget and a small team.
+- Must follow organisation policies.
 
 ## 9. Unknowns
 
-- Exact number of request.
-- Handeling of many requests at the same time
-- many requests for the same department
-- Not enough resource for the solving of the issue
+- Number of requests and peak load.
+- Staffing available to resolve issues.
 
-## 10. Non-goal
+## 10. Non-goals
 
--External customer support
--Payroll
--Vendor management
+External customer support, payroll, vendor management.
 
-## 11.Acceptance criteria
+## 11. Acceptance criteria
 
-- An employee can create a request with required fields 
-- The request is assigned to an assignee
-- Helpdesk can approve or reject requests, with an explanation required for rejection
-- The assignee can update status and add comments
-- The system records all actions in an audit log
-- The requester can see progress and resolution status
-- Dashboard displays total open, in progress, and overdue requests
-- Notifications are sent to assigned users and requesters
+- An employee can create a ticket with required fields and optional attachments.
+- Helpdesk can approve or reject (reason required) and assign a ticket to an assignee.
+- The assignee can claim, comment on and resolve the ticket with notes.
+- The requester can see progress, who is handling it and the resolution.
+- All actions are recorded in the audit log.
+- Dashboards show open, in-progress and overdue tickets.
+- Notifications reach Helpdesk, assignees and requesters.
+- A forgotten password can be reset by email.
