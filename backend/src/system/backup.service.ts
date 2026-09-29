@@ -1,8 +1,9 @@
 import { Injectable, Logger, OnApplicationBootstrap, OnModuleDestroy } from '@nestjs/common';
 import { mkdir, readdir, rename, rm } from 'node:fs/promises';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { DataSource } from 'typeorm';
 import { BACKUP_DIR } from '../common/env';
+import { describeError } from '../common/log-safe';
 
 const KEEP_DAYS = 7;
 const BACKUP_EVERY_MS = 6 * 60 * 60 * 1000;
@@ -39,10 +40,10 @@ export class BackupService implements OnApplicationBootstrap, OnModuleDestroy {
       await this.dataSource.query('VACUUM INTO ?', [partial]);
       await rename(partial, file);
       await this.prune(directory);
-      this.logger.log(`Database backed up to ${file}`);
+      this.logger.log(`Database backed up (${basename(file)})`);
       return file;
     } catch (error) {
-      this.logger.error(`Database backup failed: ${error instanceof Error ? error.message : String(error)}`);
+      this.logger.error(`Database backup failed: ${describeError(error)}`);
       return null;
     }
   }

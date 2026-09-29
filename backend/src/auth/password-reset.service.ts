@@ -12,6 +12,7 @@ import { hashPassword } from './password';
 import { passwordProblem } from './password-policy';
 import { PasswordResetTokenEntity } from './password-reset-token.entity';
 import { UserEntity } from './user.entity';
+import { maskEmail } from '../common/log-safe';
 
 const RESET_MINUTES = 15;
 const INVITE_LINK_HOURS = 72;
@@ -25,11 +26,6 @@ const INVALID_CODE = 'That code is incorrect or has expired. Check the latest em
 
 function sha256(value: string): string {
   return createHash('sha256').update(value).digest('hex');
-}
-
-function maskEmail(email: string): string {
-  const [name, domain] = email.split('@');
-  return `${name.slice(0, 2)}${'*'.repeat(Math.max(1, name.length - 2))}@${domain}`;
 }
 
 // Either the secret from the emailed link, or the account email plus the 6-digit code.
@@ -63,8 +59,8 @@ export class PasswordResetService {
         category: 'auth',
         action: 'PASSWORD_RESET_REQUESTED',
         outcome: 'failure',
-        summary: `Password reset requested for ${normalizedEmail} (${user ? 'account disabled' : 'unknown email'}); no email sent`,
-        details: { email: normalizedEmail, reason: user ? 'account disabled' : 'unknown email' },
+        summary: `Password reset requested for ${maskEmail(normalizedEmail)} (${user ? 'account disabled' : 'unknown email'}); no email sent`,
+        details: { email: maskEmail(normalizedEmail), reason: user ? 'account disabled' : 'unknown email' },
       });
       return;
     }
@@ -77,8 +73,8 @@ export class PasswordResetService {
         action: 'PASSWORD_RESET_REQUESTED',
         outcome: 'denied',
         target: { type: 'user', id: user.id },
-        summary: `Password reset for ${normalizedEmail} refused (more than ${MAX_REQUESTS_PER_HOUR} requests in an hour)`,
-        details: { email: normalizedEmail, reason: 'rate limited' },
+        summary: `Password reset for user ${user.id} refused (more than ${MAX_REQUESTS_PER_HOUR} requests in an hour)`,
+        details: { reason: 'rate limited' },
       });
       return;
     }
@@ -128,9 +124,8 @@ export class PasswordResetService {
       target: { type: 'user', id: user.id },
       summary:
         purpose === 'invite'
-          ? `Invitation email sent to ${user.email}`
-          : `Password reset code and link sent to ${user.email}${requestedBy ? ' by an administrator' : ''}`,
-      details: { email: user.email },
+          ? `Invitation email sent to user ${user.id}`
+          : `Password reset code and link sent to user ${user.id}${requestedBy ? ' by an administrator' : ''}`,
     });
   }
 
@@ -173,8 +168,8 @@ export class PasswordResetService {
       action: found.record.purpose === 'invite' ? 'INVITE_ACCEPTED' : 'PASSWORD_RESET_COMPLETED',
       actor: { id: found.user.id, role: found.user.role },
       target: { type: 'user', id: found.user.id },
-      summary: `${found.user.firstName} ${found.user.lastName} ${
-        found.record.purpose === 'invite' ? 'set their password from the invitation' : `reset their password with the emailed ${'token' in credential ? 'link' : 'code'}`
+      summary: `${
+        found.record.purpose === 'invite' ? 'Set a password from the invitation' : `Reset the password with the emailed ${'token' in credential ? 'link' : 'code'}`
       }; other sessions were signed out`,
     });
   }
@@ -212,7 +207,7 @@ export class PasswordResetService {
         action: 'PASSWORD_RESET_FAILED',
         outcome: 'failure',
         target: { type: 'user', id: found.user.id },
-        summary: `Wrong password reset code entered for ${found.user.email} (attempt ${attempts} of ${MAX_CODE_ATTEMPTS})${attempts >= MAX_CODE_ATTEMPTS ? '; reset cancelled' : ''}`,
+        summary: `Wrong password reset code entered for user ${found.user.id} (attempt ${attempts} of ${MAX_CODE_ATTEMPTS})${attempts >= MAX_CODE_ATTEMPTS ? '; reset cancelled' : ''}`,
         details: { reason: 'wrong code', attempts },
       });
       throw new BadRequestException(INVALID_CODE);

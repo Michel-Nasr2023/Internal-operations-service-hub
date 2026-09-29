@@ -6,6 +6,7 @@ import { AuditService } from '../audit/audit.service';
 import { UserEntity } from '../auth/user.entity';
 import { TicketEntity } from './ticket.entity';
 import { TicketAiFailure, TicketAiPending } from './ticket.types';
+import { describeError, ticketRef } from '../common/log-safe';
 
 const TEAM_NAMES: Record<string, string> = {
   it: 'IT Operations',
@@ -45,7 +46,7 @@ export class TicketAnalysisQueue implements OnModuleInit, OnModuleDestroy {
         .getRawMany<{ id: string }>();
       for (const { id } of pending) void this.enqueue(id);
     } catch (error) {
-      this.logger.error(`Could not resume pending AI analyses: ${error instanceof Error ? error.message : String(error)}`);
+      this.logger.error(`Could not resume pending AI analyses: ${describeError(error)}`);
     }
     this.timer = setInterval(() => void this.retryDueFailures(), RETRY_CHECK_INTERVAL_MS);
     this.timer.unref();
@@ -91,7 +92,7 @@ export class TicketAnalysisQueue implements OnModuleInit, OnModuleDestroy {
         if (claimed.affected) void this.enqueue(ticket.id);
       }
     } catch (error) {
-      this.logger.error(`Could not schedule automatic AI retries: ${error instanceof Error ? error.message : String(error)}`);
+      this.logger.error(`Could not schedule automatic AI retries: ${describeError(error)}`);
     }
   }
 
@@ -103,6 +104,7 @@ export class TicketAnalysisQueue implements OnModuleInit, OnModuleDestroy {
 
       const requester = await this.userRepository.findOneBy({ id: ticket.requesterId });
       const result = await this.rqstyAiService.analyzeTicket({
+        ticketId,
         requesterName: requester ? `${requester.firstName} ${requester.lastName}`.trim() : ticket.requesterId,
         jobTitle: requester?.jobTitle ?? 'Employee',
         title: ticket.title,
@@ -121,6 +123,12 @@ export class TicketAnalysisQueue implements OnModuleInit, OnModuleDestroy {
 
       // Only the analysis column is written, so a workflow change made meanwhile is never overwritten.
       await this.ticketRepository.update({ id: ticketId }, { aiResult: stored });
+      // e.g. "AI analysis failed for ticket 2ad75e8a: The server could not reach the AI service after 3 attempts."
+      if (stored.source === 'failed') {
+        this.logger.warn(`AI analysis failed for ${ticketRef(ticketId)}: ${stored.failureReason}${stored.retryAt ? ` Automatic retry at ${stored.retryAt}.` : ''}`);
+      } else {
+        this.logger.log(`AI analysis completed for ${ticketRef(ticketId)}.`);
+      }
       await this.auditService.record({
         category: 'ticket',
         action: stored.source === 'ai' ? 'AI_ANALYSIS_COMPLETED' : 'AI_ANALYSIS_FAILED',
@@ -128,15 +136,15 @@ export class TicketAnalysisQueue implements OnModuleInit, OnModuleDestroy {
         target: { type: 'ticket', id: ticketId },
         summary:
           stored.source === 'ai'
-            ? `AI analysed "${ticket.title}"${stored.isUnclear ? ' (flagged as unclear)' : ''}`
-            : `AI analysis failed for "${ticket.title}": ${stored.failureReason}${stored.retryAt ? ' An automatic retry is scheduled.' : ''}`,
+            ? `AI analysed ${ticketRef(ticketId)}${stored.isUnclear ? ' (flagged as unclear)' : ''}`
+            : `AI analysis failed for ${ticketRef(ticketId)}: ${stored.failureReason}${stored.retryAt ? ' An automatic retry is scheduled.' : ''}`,
         details:
           stored.source === 'failed'
             ? { failureCode: stored.failureCode, attempts: stored.attempts, autoRetries, retryAt: stored.retryAt ?? null }
             : { attempts: stored.attempts ?? 1, autoRetries },
       });
     } catch (error) {
-      this.logger.error(`AI analysis for ticket ${ticketId} could not be saved: ${error instanceof Error ? error.message : String(error)}`);
+      this.logger.error(`AI analysis for ${ticketRef(ticketId)} could not be saved: ${describeError(error)}`);
     } finally {
       this.queued.delete(ticketId);
     }

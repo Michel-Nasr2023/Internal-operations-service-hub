@@ -3,7 +3,9 @@ import { mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DataSource } from 'typeorm';
+import { RqstyAiService } from '../ai/rqsty-ai.service';
 import { UserEntity } from '../auth/user.entity';
+import { MailService } from '../mail/mail.service';
 import { BackupService } from './backup.service';
 import { HealthController } from './health.controller';
 
@@ -48,11 +50,20 @@ describe('Database backups and health check', () => {
     await expect(new BackupService(dataSource).backUp(backupDir)).resolves.toBeNull();
   });
 
-  it('answers the health check, and reports when the database is unreachable', async () => {
-    const health = new HealthController(dataSource);
-    await expect(health.check()).resolves.toMatchObject({ status: 'ok', database: 'ok' });
+  it('answers the health check with state and small capability status only', async () => {
+    const ai = { capability: () => 'paused' } as unknown as RqstyAiService;
+    const mail = { capability: () => 'failed' } as unknown as MailService;
+    const health = new HealthController(dataSource, ai, mail);
+
+    const report = await health.check();
+    expect(Object.keys(report).sort()).toEqual(['ai', 'database', 'email', 'status', 'time']);
+    expect(report).toMatchObject({ status: 'ok', database: 'ok', ai: 'paused', email: 'failed' });
+    // Nothing that looks like a secret, a web address, a file path or an email address.
+    expect(JSON.stringify(report)).not.toMatch(/https?:|[\\/]|@|key|secret|password/i);
 
     await dataSource.destroy();
-    await expect(health.check()).rejects.toBeInstanceOf(ServiceUnavailableException);
+    const failure = await health.check().catch((error: ServiceUnavailableException) => error);
+    expect(failure).toBeInstanceOf(ServiceUnavailableException);
+    expect((failure as ServiceUnavailableException).getResponse()).toEqual({ status: 'unavailable', database: 'failed', message: 'The database cannot be reached.' });
   });
 });

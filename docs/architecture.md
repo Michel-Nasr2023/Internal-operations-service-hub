@@ -14,6 +14,7 @@ A web application for employees to submit operational requests and for Helpdesk 
 | File storage           | Local disk (`backend/data/`)     | Ticket attachments, profile photos and database backups                  |
 | AI provider            | Requesty (OpenAI-compatible API) | Ticket analysis on submission                                            |
 | Email                  | SMTP (e.g. Gmail) via Nodemailer | Password reset codes and account invitations                             |
+| Hosting                | Free VM: Caddy + pm2             | HTTPS, serves the web app, forwards `/api`, restarts the API ([deployment](deployment.md)) |
 
 API modules: `auth` (sign-in, sessions, password reset), `tickets` (workflow, comments, attachments, AI queue), `notifications`, `audit`, `profile`, `admin`, `mail`, `system` (health check, backups).
 
@@ -34,6 +35,7 @@ API modules: `auth` (sign-in, sessions, password reset), `tickets` (workflow, co
 - **Attempt limits:** 5 failed sign-ins per account (30 per network address) pause sign-in for 15 minutes; sign-ups and reset requests are also limited per address.
 - **Password reset:** single-use 6-digit code and link, stored hashed, 15-minute expiry, 5 attempts, 3 emails per hour.
 - **Audit log:** append-only record of sign-ins, refused requests, ticket actions and admin actions, with IP, browser and request ID (`X-Request-Id`).
+- **Health and logs:** the public `/api/health` shows only state and one word per capability; logs and audit entries refer to tickets and users by ID with a plain reason, and never contain ticket text, names, full emails, secrets, provider URLs or file paths.
 
 ## 5. Failure handling
 
@@ -48,7 +50,8 @@ API modules: `auth` (sign-in, sessions, password reset), `tickets` (workflow, co
 | Many wrong passwords | Refused with "try again in N minutes" before any password check |
 | Stored file missing or locked | Only that download fails, with a clear message |
 | Database locked or damaged | Waits up to 5 s for a lock; backups at start-up and every 6 h (one per day, last 7 days) in `data/backups` |
-| Unexpected server error | Logged; the server keeps running |
+| Unexpected server error | Logged once with its request ID; the user gets a plain "Internal server error"; the server keeps running |
+| API process stops | pm2 restarts it within seconds (and after a VM reboot) |
 | Server restarts | Pending AI analyses, due retries and missed 24 h / overdue alerts are picked up on start-up |
 | Server unreachable (browser) | Requests stop after 30 s with a clear message; a banner shows "Reconnecting" and checks the health endpoint until the server is back |
 | A page fails to display | Only that page shows an error with "Try again"; the top bar and other pages keep working |
@@ -61,11 +64,12 @@ API modules: `auth` (sign-in, sessions, password reset), `tickets` (workflow, co
 2. **Explicit state transitions.** Only defined transitions are allowed, each recorded with actor, time and reason.
 3. **Relational storage** as the system of record — see [ADR-001](decisions/ADR-001.md).
 4. **AI in the background.** Keeps submission fast and makes AI failures visible instead of hidden.
-5. **Privacy by default.** Employees only access tickets they requested or are assigned; logs never contain passwords or tokens.
+5. **Privacy by default.** Employees only access tickets they requested or are assigned; logs never contain ticket text, passwords or tokens.
 6. **Single-statement writes with version checks.** All requests share one SQLite connection, so the API uses no transactions; each write is one statement, and ticket saves use optimistic locking on the `version` field.
 
-## 7. Testing and development setup
+## 7. Testing, release and development setup
 
+- **Release gate:** GitHub Actions runs the type checks, builds and all tests, and checks that no `.env` file is committed, on every push. The final smoke test (`npm run smoke -- <url>`) runs the critical journey on the live app. See [Week 5](week5-operations-and-release.md).
 - Automated tests (Jest): workflow rules, AI retries, outages and automatic retries, scheduled notifications, email retries, backups, simultaneous edits, SQLite integration tests, and API end-to-end tests for tickets (including duplicate submissions and missing files), sign-in (including attempt limits), profile, password reset and administration.
 - An empty database is seeded with three development accounts (Employee, Helpdesk, Administrator), listed on the sign-in page.
 - All data lives in `backend/data/`, whichever folder the server is started from; `DATA_DIR` can move it (e.g. out of OneDrive).

@@ -67,7 +67,7 @@ export class ProfileService {
         action: 'PROFILE_UPDATED',
         actor: user,
         target: { type: 'user', id: record.id },
-        summary: `${dto.firstName} ${dto.lastName} updated their ${changed.join(', ')}`,
+        summary: `Updated their ${changed.join(', ')}`,
         details: { fields: changed.join(', ') },
       });
     }
@@ -84,7 +84,7 @@ export class ProfileService {
         outcome: 'failure',
         actor: user,
         target: { type: 'user', id: record.id },
-        summary: `Password change refused for ${record.email} (${reason})`,
+        summary: `Password change refused (${reason})`,
         details: { reason },
       });
       throw new BadRequestException(message);
@@ -103,7 +103,7 @@ export class ProfileService {
       action: 'PASSWORD_CHANGED',
       actor: user,
       target: { type: 'user', id: record.id },
-      summary: `${record.firstName} ${record.lastName} changed their password; other sessions were signed out`,
+      summary: 'Changed their password; other sessions were signed out',
     });
     return { passwordChangedAt, token: signToken({ id: record.id, role: record.role }) };
   }
@@ -129,7 +129,7 @@ export class ProfileService {
       action: 'AVATAR_UPDATED',
       actor: user,
       target: { type: 'user', id: record.id },
-      summary: `${record.firstName} ${record.lastName} changed their profile photo`,
+      summary: 'Changed their profile photo',
     });
     return this.get(user);
   }
@@ -144,7 +144,7 @@ export class ProfileService {
         action: 'AVATAR_REMOVED',
         actor: user,
         target: { type: 'user', id: record.id },
-        summary: `${record.firstName} ${record.lastName} removed their profile photo`,
+        summary: 'Removed their profile photo',
       });
     }
     return this.get(user);

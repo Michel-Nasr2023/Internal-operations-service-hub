@@ -2,6 +2,7 @@ import { Logger, NotFoundException, ServiceUnavailableException } from '@nestjs/
 import { Response } from 'express';
 import { FileHandle, open } from 'node:fs/promises';
 import { pipeline } from 'node:stream';
+import { describeError } from './log-safe';
 
 export interface StoredFile {
   handle: FileHandle;
@@ -32,7 +33,7 @@ export async function openStoredFile(path: string, missingMessage: string): Prom
 export function sendStoredFile(response: Response, file: StoredFile, logger: Logger, label: string): void {
   pipeline(file.handle.createReadStream(), response, (error) => {
     if (error && (error as NodeJS.ErrnoException).code !== 'ERR_STREAM_PREMATURE_CLOSE') {
-      logger.error(`Could not send ${label}: ${error.message}`);
+      logger.error(`Could not send ${label}: ${describeError(error)}`);
     }
   });
 }

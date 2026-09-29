@@ -10,6 +10,7 @@ import { UserEntity } from './user.entity';
 import { AuditService } from '../audit/audit.service';
 import { currentRequestContext } from '../audit/request-context';
 import { AttemptLimiter, TooManyAttemptsException, waitDescription } from '../common/attempt-limiter';
+import { maskEmail } from '../common/log-safe';
 
 export type AuthenticatedSession = AuthenticatedUser & {
   email: string;
@@ -114,7 +115,7 @@ export class AuthService implements OnModuleInit {
       action: 'LOGIN_SUCCEEDED',
       actor: user,
       target: { type: 'user', id: user.id },
-      summary: `${fullName(user)} signed in`,
+      summary: 'Signed in',
     });
     return this.toSession(user);
   }
@@ -126,7 +127,7 @@ export class AuthService implements OnModuleInit {
       action: 'LOGOUT',
       actor: user,
       target: { type: 'user', id: user.id },
-      summary: `${record ? fullName(record) : user.id} signed out`,
+      summary: 'Signed out',
     });
   }
 
@@ -136,8 +137,8 @@ export class AuthService implements OnModuleInit {
       action: 'LOGIN_FAILED',
       outcome: 'failure',
       target: user ? { type: 'user', id: user.id } : undefined,
-      summary: `Failed sign-in for ${email} (${reason})`,
-      details: { email, reason },
+      summary: `Failed sign-in for ${maskEmail(email)} (${reason})`,
+      details: { email: maskEmail(email), reason },
     });
   }
 
@@ -150,8 +151,8 @@ export class AuthService implements OnModuleInit {
         action: 'LOGIN_LOCKED',
         outcome: 'denied',
         target: user ? { type: 'user', id: user.id } : undefined,
-        summary: `Sign-in for ${email} paused for ${minutes} minutes after ${FAILED_SIGN_INS_PER_ACCOUNT} failed attempts`,
-        details: { email, scope: 'account' },
+        summary: `Sign-in for ${maskEmail(email)} paused for ${minutes} minutes after ${FAILED_SIGN_INS_PER_ACCOUNT} failed attempts`,
+        details: { email: maskEmail(email), scope: 'account' },
       });
     }
     if (this.failedSignInsByAddress.hit(address)) {
@@ -182,8 +183,8 @@ export class AuthService implements OnModuleInit {
         category: 'auth',
         action: 'SIGNUP_FAILED',
         outcome: 'failure',
-        summary: `Sign-up refused for ${normalizedEmail} (email already registered)`,
-        details: { email: normalizedEmail, reason: 'email already registered' },
+        summary: `Sign-up refused for ${maskEmail(normalizedEmail)} (email already registered)`,
+        details: { email: maskEmail(normalizedEmail), reason: 'email already registered' },
       });
       throw new ConflictException('An account with this email already exists');
     }
@@ -205,7 +206,7 @@ export class AuthService implements OnModuleInit {
       action: 'SIGNUP',
       actor: user,
       target: { type: 'user', id: user.id },
-      summary: `${fullName(user)} created an employee account (${normalizedEmail})`,
+      summary: `Created an employee account (user ${user.id})`,
     });
     return this.toSession(user);
   }

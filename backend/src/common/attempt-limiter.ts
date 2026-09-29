@@ -1,6 +1,6 @@
 import { HttpException, HttpStatus } from '@nestjs/common';
 
-// "Too many attempts": the reply says when to try again, also as a Retry-After header (see AccessDeniedFilter).
+// "Too many attempts": the reply says when to try again, also as a Retry-After header (see ApiExceptionFilter).
 export class TooManyAttemptsException extends HttpException {
   constructor(
     message: string,

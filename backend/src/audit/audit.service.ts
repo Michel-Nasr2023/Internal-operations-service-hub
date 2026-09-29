@@ -7,6 +7,7 @@ import { TicketEntity } from '../tickets/ticket.entity';
 import { AuthenticatedUser } from '../tickets/ticket.types';
 import { AuditCategory, AuditLogEntity, AuditOutcome } from './audit-log.entity';
 import { currentRequestContext } from './request-context';
+import { describeError, ticketRef } from '../common/log-safe';
 
 export interface AuditEntryInput {
   category: AuditCategory;
@@ -70,7 +71,7 @@ export class AuditService implements OnModuleInit {
         requestId: context?.requestId ?? null,
       });
     } catch (error) {
-      this.logger.error(`Audit entry "${entry.action}" could not be stored: ${error instanceof Error ? error.message : String(error)}`);
+      this.logger.error(`Audit entry "${entry.action}" could not be stored: ${describeError(error)}`);
     }
   }
 
@@ -123,7 +124,7 @@ export class AuditService implements OnModuleInit {
           actorRole: null,
           targetType: 'ticket' as const,
           targetId: ticket.id,
-          summary: `${event.action.replace(/_/g, ' ').toLowerCase()} · "${ticket.title}"`.slice(0, 500),
+          summary: `${event.action.replace(/_/g, ' ').toLowerCase()} · ${ticketRef(ticket.id)}`,
           details: { oldStatus: event.oldStatus ?? null, newStatus: event.newStatus ?? null, backfilled: true },
           ip: null,
           userAgent: null,
@@ -135,7 +136,7 @@ export class AuditService implements OnModuleInit {
       }
       if (rows.length > 0) this.logger.log(`Backfilled ${rows.length} ticket history entries into the audit log.`);
     } catch (error) {
-      this.logger.error(`Audit backfill failed: ${error instanceof Error ? error.message : String(error)}`);
+      this.logger.error(`Audit backfill failed: ${describeError(error)}`);
     }
   }
 }

@@ -12,6 +12,7 @@ import { TicketAnalysisQueue } from './ticket-analysis.queue';
 import { UserEntity } from '../auth/user.entity';
 import { AuditService } from '../audit/audit.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { describeError, ticketRef } from '../common/log-safe';
 
 // How many times an action is re-run when other people keep saving the same ticket at the same moment.
 const MAX_SAVE_ATTEMPTS = 3;
@@ -55,7 +56,7 @@ export class TicketsService implements OnModuleInit {
         if (Object.keys(changes).length > 0) await this.ticketRepository.update({ id: ticket.id }, changes);
       }
     } catch (error) {
-      this.logger.error(`Could not fill in reviewer/assigner history: ${error instanceof Error ? error.message : String(error)}`);
+      this.logger.error(`Could not fill in reviewer/assigner history: ${describeError(error)}`);
     }
   }
 
@@ -124,7 +125,7 @@ export class TicketsService implements OnModuleInit {
       action: 'AI_ANALYSIS_REQUESTED',
       actor: user,
       target: { type: 'ticket', id },
-      summary: `Asked the AI to analyse "${truncate(ticket.title, 80)}" again`,
+      summary: `Asked the AI to analyse ${ticketRef(ticket.id)} again`,
     });
     void this.analysisQueue.enqueue(id);
     return this.present(ticket);
@@ -386,7 +387,7 @@ export class TicketsService implements OnModuleInit {
     try {
       await send(this.notificationsService);
     } catch (error) {
-      this.logger.error(`Notification could not be stored: ${error instanceof Error ? error.message : String(error)}`);
+      this.logger.error(`Notification could not be stored: ${describeError(error)}`);
     }
   }
 
@@ -567,44 +568,42 @@ export class TicketsService implements OnModuleInit {
         action: event.action,
         actor,
         target: { type: 'ticket', id: saved.id },
-        summary: await this.describeTicketEvent(event.action, saved, event.reason),
+        summary: this.describeTicketEvent(event.action, saved),
         details: { oldStatus: event.oldStatus ?? null, newStatus: event.newStatus ?? null, priority: saved.priority ?? null },
       });
     }
     return saved;
   }
 
-  private async describeTicketEvent(action: string, ticket: Ticket, reason?: string): Promise<string> {
-    const title = `"${truncate(ticket.title, 80)}"`;
+  // Audit-log summary for a ticket event: the ticket and people by ID, never the ticket's title, reasons,
+  // comments or file names (those stay on the ticket, visible to the people allowed to see it).
+  private describeTicketEvent(action: string, ticket: Ticket): string {
+    const ref = ticketRef(ticket.id);
     switch (action) {
       case 'TICKET_SUBMITTED':
-        return `Submitted ${title}`;
+        return `Submitted ${ref}`;
       case 'TICKET_APPROVED':
-        return `Approved ${title} with ${ticket.priority} priority`;
+        return `Approved ${ref} with ${ticket.priority} priority`;
       case 'TICKET_REJECTED':
-        return `Rejected ${title}: ${truncate(reason ?? '', 160)}`;
+        return `Rejected ${ref} (reason recorded on the ticket)`;
       case 'PRIORITY_CHANGED':
-        return `Changed priority of ${title} to ${ticket.priority}`;
-      case 'TICKET_ASSIGNED': {
-        const assignee = ticket.assigneeId ? await this.userRepository.findOneBy({ id: ticket.assigneeId }) : null;
-        return `Assigned ${title} to ${assignee ? fullName(assignee) : ticket.assigneeId} (${ticket.expectedDurationHours}h)`;
-      }
-      case 'TICKET_REASSIGNED': {
-        const assignee = ticket.assigneeId ? await this.userRepository.findOneBy({ id: ticket.assigneeId }) : null;
-        return `Reassigned ${title} to ${assignee ? fullName(assignee) : ticket.assigneeId}${reason ? ` (${truncate(reason, 120)})` : ''}`;
-      }
+        return `Changed priority of ${ref} to ${ticket.priority}`;
+      case 'TICKET_ASSIGNED':
+        return `Assigned ${ref} to user ${ticket.assigneeId} (${ticket.expectedDurationHours}h)`;
+      case 'TICKET_REASSIGNED':
+        return `Reassigned ${ref} to user ${ticket.assigneeId}`;
       case 'TICKET_RETURNED_TO_QUEUE':
-        return `Returned ${title} to the Helpdesk queue${reason ? ` (${truncate(reason, 120)})` : ''}`;
+        return `Returned ${ref} to the Helpdesk queue`;
       case 'TICKET_CLAIMED':
-        return `Claimed ${title}; work timer started`;
+        return `Claimed ${ref}; work timer started`;
       case 'TICKET_RESOLVED':
-        return `Resolved ${title}`;
+        return `Resolved ${ref}`;
       case 'COMMENT_ADDED':
-        return `Commented on ${title}`;
+        return `Commented on ${ref}`;
       case 'ATTACHMENTS_ADDED':
-        return `Attached ${truncate(reason ?? 'files', 200)} to ${title}`;
+        return `Attached files to ${ref}`;
       default:
-        return `${action} on ${title}`;
+        return `${action} on ${ref}`;
     }
   }
 

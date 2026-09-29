@@ -137,7 +137,7 @@ export class AdminService {
       action: 'USER_CREATED',
       actor: admin,
       target: { type: 'user', id: user.id },
-      summary: `Created ${ROLE_NAMES[dto.role]} account for ${dto.firstName} ${dto.lastName} (${email})`,
+      summary: `Created a ${ROLE_NAMES[dto.role]} account (user ${user.id})`,
       details: { role: dto.role },
     });
     await this.passwordResetService.issue(user, 'invite', admin);
@@ -196,13 +196,12 @@ export class AdminService {
     if (roleChanged || statusChanged) changes.sessionsRevokedAt = new Date().toISOString();
     await this.userRepository.update({ id }, changes);
 
-    const name = `${changes.firstName ?? user.firstName} ${changes.lastName ?? user.lastName}`;
     const action = statusChanged ? (dto.status === 'disabled' ? 'USER_DISABLED' : 'USER_ENABLED') : roleChanged ? 'USER_ROLE_CHANGED' : 'USER_UPDATED';
     const summary = statusChanged
-      ? `${dto.status === 'disabled' ? 'Disabled' : 'Re-enabled'} the account of ${name}`
+      ? `${dto.status === 'disabled' ? 'Disabled' : 'Re-enabled'} the account of user ${id}`
       : roleChanged
-        ? `Changed ${name}'s role from ${ROLE_NAMES[user.role]} to ${ROLE_NAMES[dto.role!]}`
-        : `Updated ${name}'s ${changed.join(', ')}`;
+        ? `Changed the role of user ${id} from ${ROLE_NAMES[user.role]} to ${ROLE_NAMES[dto.role!]}`
+        : `Updated the ${changed.join(', ')} of user ${id}`;
     await this.auditService.record({
       category: 'auth',
       action,
@@ -234,7 +233,7 @@ export class AdminService {
         action: 'TICKETS_HANDED_OVER',
         actor: admin,
         target: { type: 'user', id: user.id },
-        summary: `Handed over ${moved} ticket${moved === 1 ? '' : 's'} from ${user.firstName} ${user.lastName} to ${destination}`,
+        summary: `Handed over ${moved} ticket${moved === 1 ? '' : 's'} from user ${user.id} to ${recipient ? `user ${recipient.id}` : 'the Helpdesk queue'}`,
         details: { moved, mode: dto.mode, toUserId: dto.toUserId ?? null },
       });
     }
@@ -260,7 +259,7 @@ export class AdminService {
       action: 'USER_SESSIONS_REVOKED',
       actor: admin,
       target: { type: 'user', id },
-      summary: `Signed ${user.firstName} ${user.lastName} out of all sessions`,
+      summary: `Signed user ${user.id} out of all sessions`,
     });
     return { message: `${user.firstName} ${user.lastName} has been signed out everywhere.` };
   }

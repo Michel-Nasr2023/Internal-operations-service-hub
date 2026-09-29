@@ -28,7 +28,7 @@ export class OutboxEmailEntity {
 
   // sent: accepted by the mail server · retrying: a temporary problem (server unreachable or busy), tried again
   // automatically at nextAttemptAt · failed: refused, or still failing after the retries ·
-  // not-configured: no mail server set up, so it was only recorded here and in the console.
+  // not-configured: no mail server set up, so it was only recorded here.
   @Column({ type: 'text', default: 'not-configured' })
   status!: 'sent' | 'retrying' | 'failed' | 'not-configured';
 

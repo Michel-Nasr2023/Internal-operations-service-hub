@@ -1,0 +1,61 @@
+# Release gate: every push and pull request must pass these checks before a commit is released.
+# A red check means NO-GO (see docs/week5-operations-and-release.md).
+name: Release gate
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  backend:
+    name: Backend - type check, build and tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - run: npm ci
+      - name: Type check (source and tests)
+        run: npx tsc --noEmit -p tsconfig.json
+      - name: Build
+        run: npm run build
+      - name: Unit, integration and API end-to-end tests
+        run: npx jest --runInBand --ci
+
+  frontend:
+    name: Frontend - type check and build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - name: Type check and production build
+        run: npm run build
+
+  secrets:
+    name: No secrets committed
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: No .env files in the repository (only .env.example)
+        run: |
+          if git ls-files | grep -E '(^|/)\.env(\..+)?$' | grep -v '\.env\.example$'; then
+            echo "::error::An .env file is committed. Remove it and rotate the secrets it contained."
+            exit 1
+          fi
+          echo "No .env files committed."

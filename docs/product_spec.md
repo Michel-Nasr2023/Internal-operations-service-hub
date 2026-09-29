@@ -73,6 +73,7 @@ Employees, department managers, IT team, HR, finance, procurement, security team
 - Security: hashed passwords, signed sessions that can be revoked, sign-in attempt limits, server-side validation.
 - Audit trail for all workflow, sign-in and access-denied events.
 - Usable on desktop and mobile; clear UI for non-technical staff.
+- Operability: a public health check that exposes nothing internal, logs that give evidence (IDs, reasons) without personal data or secrets, a release gate and a final smoke test.
 - Reliability: when the AI, email, network or a page fails, users get a clear message and the hub retries automatically where possible; simultaneous edits and repeated submissions never overwrite or duplicate tickets; the database is backed up daily.
 
 ## 7. Assumptions

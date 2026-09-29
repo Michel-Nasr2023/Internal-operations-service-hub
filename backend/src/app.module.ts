@@ -13,6 +13,7 @@ import { AuditModule } from './audit/audit.module';
 import { ProfileModule } from './profile/profile.module';
 import { AdminModule } from './admin/admin.module';
 import { PasswordResetTokenEntity } from './auth/password-reset-token.entity';
+import { MailModule } from './mail/mail.module';
 import { OutboxEmailEntity } from './mail/outbox-email.entity';
 import { NotificationEntity } from './notifications/notification.entity';
 import { NotificationsModule } from './notifications/notifications.module';
@@ -39,6 +40,7 @@ import { HealthController } from './system/health.controller';
     AuditModule,
     ProfileModule,
     AdminModule,
+    MailModule,
   ],
   controllers: [HealthController],
   providers: [BackupService],

@@ -1,19 +1,25 @@
-// Usage (from the project root): npm run user:role -- jane.doe@company.com helpdesk
-// Changes a user's role directly in the database, signs them out so the new role applies at their next
-// sign-in, and records the change in the audit log. Administrators can do the same from the Admin > Users page.
+// Usage (from the project root): npm run user:password -- admin@company.com Admin12345
+// Recovery tool for the server operator, e.g. when a public demo account's password was changed by a visitor.
+// Sets a new password (same rules as sign-up), signs the person out everywhere, and records it in the audit log.
+// Within the app, people reset their own password by email instead.
 import 'reflect-metadata';
 import { randomUUID } from 'node:crypto';
 import { DataSource } from 'typeorm';
 import { AuditLogEntity } from '../audit/audit-log.entity';
+import { hashPassword } from '../auth/password';
+import { passwordProblem } from '../auth/password-policy';
 import { UserEntity } from '../auth/user.entity';
 import { DATABASE_FILE } from '../common/env';
 
-const ROLES = ['employee', 'helpdesk', 'administrator'] as const;
-
 async function main(): Promise<void> {
-  const [emailArg, role] = process.argv.slice(2);
-  if (!emailArg || !role || !(ROLES as readonly string[]).includes(role)) {
-    console.error(`Usage: npm run user:role -- <email> <${ROLES.join('|')}>`);
+  const [emailArg, password] = process.argv.slice(2);
+  if (!emailArg || !password) {
+    console.error('Usage: npm run user:password -- <email> <new password>');
+    process.exit(1);
+  }
+  const weakness = passwordProblem(password);
+  if (weakness) {
+    console.error(weakness);
     process.exit(1);
   }
 
@@ -28,27 +34,23 @@ async function main(): Promise<void> {
       process.exitCode = 1;
       return;
     }
-    if (user.role === role) {
-      console.log(`${email} is already ${role}.`);
-      return;
-    }
 
     const now = new Date().toISOString();
-    await users.update({ id: user.id }, { role: role as UserEntity['role'], sessionsRevokedAt: now });
+    await users.update({ id: user.id }, { password: await hashPassword(password), passwordChangedAt: now, sessionsRevokedAt: now });
     await dataSource.getRepository(AuditLogEntity).insert({
       id: randomUUID(),
       timestamp: now,
       category: 'auth',
-      action: 'USER_ROLE_CHANGED',
+      action: 'PASSWORD_RESET_COMPLETED',
       outcome: 'success',
       actorId: null,
       actorRole: null,
       targetType: 'user',
       targetId: user.id,
-      summary: `Changed the role of user ${user.id} from ${user.role} to ${role} (command line)`,
-      details: { from: user.role, to: role, via: 'command line' },
+      summary: `Password of user ${user.id} set from the command line; other sessions were signed out`,
+      details: { via: 'command line' },
     });
-    console.log(`${email} is now ${role}. They have been signed out and will get the new role when they sign in again.`);
+    console.log(`The password of ${email} has been changed and all their sessions were signed out.`);
   } finally {
     await dataSource.destroy();
   }

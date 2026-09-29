@@ -30,7 +30,7 @@ POST   /api/auth/reset-password/verify-code ({ email, code } -> { valid: true } 
 POST   /api/auth/reset-password            ({ token, newPassword })
 POST   /api/auth/logout                  (records the sign-out in the audit log)
 GET    /api/auth/users          (Helpdesk only)
-GET    /api/health                       (public; { status, database }, or 503 when the database cannot be reached)
+GET    /api/health                       (public; { status, database, ai, email, time } with one word each, or 503 when the database cannot be reached)
 POST   /api/tickets                      (optional Idempotency-Key header: repeating a submission returns the same ticket)
 GET    /api/tickets
 GET    /api/tickets/:id
@@ -64,7 +64,7 @@ Every security- and workflow-relevant action is written to the append-only `audi
 | `ticket` | `TICKET_SUBMITTED`, `TICKET_APPROVED`, `TICKET_REJECTED`, `PRIORITY_CHANGED`, `TICKET_ASSIGNED`, `TICKET_CLAIMED`, `TICKET_RESOLVED`, `COMMENT_ADDED` |
 | `access` | `SESSION_REJECTED` (401: missing, forged or expired session), `ACCESS_DENIED` (403: role not allowed)                                                 |
 
-Each entry records the time, actor and role, target, outcome, a short summary, the IP address, the browser, and a request ID. Every API response carries the same ID in the `X-Request-Id` header, so a user-reported problem can be matched to its log entry. Passwords, tokens and full ticket text are never logged.
+Each entry records the time, actor and role, target, outcome, a short summary, the IP address, the browser, and a request ID. Every API response carries the same ID in the `X-Request-Id` header, so a user-reported problem can be matched to its log entry. Summaries refer to tickets (`ticket 2ad75e8a`) and users by ID; ticket titles, descriptions, reasons, comments, file names, names, passwords, codes and tokens are never logged, and emails in failed sign-ins are masked (`ma***@company.com`). Server log lines follow the same rule and also leave out provider URLs and file paths; an unexpected error is logged once with its request ID and answered with a plain `500`.
 
 Each ticket also keeps its own workflow history, saved atomically with the ticket, which `GET /api/tickets/:id/audit-events` returns with actor names. On first start the audit log is back-filled from that history.
 
@@ -110,6 +110,7 @@ When the AI service itself is the problem (timeouts, network errors, 429/5xx), t
 - **Files:** a missing stored file answers `404` and a locked one `503`, for that download only.
 - **Responses:** ticket responses leave out the workflow history; read it with `GET /api/tickets/:id/audit-events`.
 - **Background jobs:** the AI queue, scheduled alerts, email retries and backups handle their own errors; an unexpected error is logged and the API keeps running.
+- **Behind a web server:** the API trusts `X-Forwarded-For` only from the same machine (Caddy on the VM), so attempt limits and the audit log see each visitor's real address; with `HOST=127.0.0.1` it cannot be reached directly.
 
 ## Attachments
 

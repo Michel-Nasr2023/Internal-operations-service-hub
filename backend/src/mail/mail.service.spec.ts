@@ -43,7 +43,7 @@ describe('MailService delivery retries', () => {
     const service = serviceWith(transport);
 
     await service.send(email);
-    expect(await row()).toMatchObject({ status: 'retrying', attempts: 1, error: 'Connection timeout', nextAttemptAt: expect.any(String) });
+    expect(await row()).toMatchObject({ status: 'retrying', attempts: 1, error: 'ETIMEDOUT: Connection timeout', nextAttemptAt: expect.any(String) });
 
     await service.retryDue();
     expect((await row()).status).toBe('retrying');
@@ -58,7 +58,7 @@ describe('MailService delivery retries', () => {
     await down.send(email);
     await down.retryDue(later(61_000));
     await down.retryDue(later(6 * 60_000));
-    expect(await row()).toMatchObject({ status: 'failed', attempts: 3, error: 'still down', nextAttemptAt: null });
+    expect(await row()).toMatchObject({ status: 'failed', attempts: 3, error: 'ECONNECTION: still down', nextAttemptAt: null });
 
     await dataSource.getRepository(OutboxEmailEntity).clear();
     const wrongPassword = serviceWith(new FakeTransport([mailError('EAUTH', 'Invalid login')]));

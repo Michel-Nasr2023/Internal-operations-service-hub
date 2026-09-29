@@ -6,6 +6,7 @@ import { UserEntity } from '../auth/user.entity';
 import { TicketEntity } from '../tickets/ticket.entity';
 import { Ticket, TicketStatus } from '../tickets/ticket.types';
 import { NotificationEntity, NotificationKind } from './notification.entity';
+import { describeError } from '../common/log-safe';
 
 export const UNCLAIMED_ALERT_HOURS = 24;
 const CHECK_INTERVAL_MS = Number(process.env.NOTIFICATION_CHECK_INTERVAL_MS ?? 5 * 60 * 1000);
@@ -102,7 +103,7 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
         });
       }
     } catch (error) {
-      this.logger.error(`Scheduled notification check failed: ${error instanceof Error ? error.message : String(error)}`);
+      this.logger.error(`Scheduled notification check failed: ${describeError(error)}`);
     }
   }
 

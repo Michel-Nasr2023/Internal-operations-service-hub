@@ -2,8 +2,13 @@
   "name": "internal-operations-service-hub-api",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
+    "eval:ai": "ts-node src/evals/run-ai-evals.ts",
     "user:role": "ts-node src/scripts/set-user-role.ts",
+    "user:password": "ts-node src/scripts/set-user-password.ts",
     "build": "nest build",
     "start": "nest start",
     "start:dev": "nest start --watch",

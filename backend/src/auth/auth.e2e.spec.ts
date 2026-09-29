@@ -124,8 +124,9 @@ describe('Auth API (e2e)', () => {
     });
 
     const rows = await app.get(DataSource).getRepository(AuditLogEntity).find({ where: { action: 'LOGIN_FAILED' }, order: { timestamp: 'ASC' } });
-    const employeeFailure = rows.find((row) => row.details?.email === 'employee@company.com');
-    const unknownFailure = rows.find((row) => row.details?.email === 'nobody@company.com');
+    // Emails are masked in the log: enough to recognise the account, not the full address.
+    const employeeFailure = rows.find((row) => row.details?.email === 'em******@company.com');
+    const unknownFailure = rows.find((row) => row.details?.email === 'no****@company.com');
     expect(employeeFailure).toMatchObject({ category: 'auth', outcome: 'failure', targetId: 'employee-1', userAgent: 'jest-audit-test' });
     expect(employeeFailure?.details?.reason).toBe('wrong password');
     expect(employeeFailure?.requestId).toEqual(expect.any(String));
@@ -180,6 +181,7 @@ describe('Auth API (e2e)', () => {
 
     const locks = await app.get(DataSource).getRepository(AuditLogEntity).findBy({ action: 'LOGIN_LOCKED' });
     expect(locks).toHaveLength(1);
-    expect(locks[0]).toMatchObject({ outcome: 'denied', summary: expect.stringContaining('target@company.com') });
+    expect(locks[0]).toMatchObject({ outcome: 'denied', summary: expect.stringContaining('ta****@company.com') });
+    expect(JSON.stringify(await app.get(DataSource).getRepository(AuditLogEntity).find())).not.toContain('target@company.com');
   });
 });

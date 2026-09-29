@@ -1,9 +1,12 @@
 import '../common/env';
 
 import { Injectable, Logger } from '@nestjs/common';
+import { ticketRef } from '../common/log-safe';
 import { AI_ISSUE_TYPES, AI_SEVERITIES, AiFailureCode, AiIssueType, AiSeverity, TicketAiFailure, TicketAiResult } from '../tickets/ticket.types';
 
 export interface TicketAnalysisInput {
+  // Only for log lines; it is not part of what is sent to the AI.
+  ticketId?: string;
   requesterName: string;
   jobTitle: string;
   title: string;
@@ -97,7 +100,10 @@ export class RqstyAiService {
         return analysis;
       } catch (error) {
         lastError = error instanceof AnalysisError ? error : new AnalysisError('provider-error', String(error), true);
-        this.logger.warn(`AI analysis attempt ${attempt}/${MAX_ATTEMPTS} failed (${lastError.code}): ${lastError.message.slice(0, 300)}`);
+        // Ticket ID and a plain reason only: never the ticket text, the prompt, the provider's reply or its URL.
+        this.logger.warn(
+          `AI analysis for ${input.ticketId ? ticketRef(input.ticketId) : 'a ticket'}, attempt ${attempt} of ${MAX_ATTEMPTS} failed (${lastError.code}): ${this.describeFailure(lastError, 1)}`,
+        );
         if (!lastError.retryable || attempt === MAX_ATTEMPTS) break;
         // On a malformed reply, the next attempt shows the model its answer and asks for valid JSON.
         invalidReply = lastError.code === 'invalid-response' ? (lastError as AnalysisError & { reply?: string }).reply : undefined;
@@ -112,6 +118,12 @@ export class RqstyAiService {
     if (temporary) this.recordOutage();
     else this.consecutiveOutages = 0;
     return this.failure(code, this.describeFailure(lastError, attemptsMade), attemptsMade, temporary);
+  }
+
+  // For the public health check: one word, never the model, provider URL or key.
+  capability(): 'ok' | 'paused' | 'not-configured' {
+    if (!this.apiKey) return 'not-configured';
+    return this.now() < this.pausedUntil ? 'paused' : 'ok';
   }
 
   // Overridden in tests to skip the real pauses.

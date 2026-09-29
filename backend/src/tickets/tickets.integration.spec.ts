@@ -113,7 +113,7 @@ describe('TicketsService SQLite integration', () => {
     await expect(service.addComment(ticket.id, { body: 'One more thing' }, employee)).rejects.toThrow('Comments are closed');
   });
 
-  it('writes every ticket action to the audit log with a readable summary', async () => {
+  it('writes every ticket action to the audit log by ticket ID, never with the ticket text', async () => {
     await dataSource.getRepository(UserEntity).save(users());
     const { service } = createServices();
     const employee = { id: 'employee-1', role: 'employee' as const };
@@ -126,11 +126,18 @@ describe('TicketsService SQLite integration', () => {
     const rows = (await dataSource.getRepository(AuditLogEntity).find({ where: { targetId: ticket.id }, order: { timestamp: 'ASC' } })).filter(
       (row) => !row.action.startsWith('AI_'),
     );
+    const ref = `ticket ${ticket.id.slice(0, 8)}`;
     expect(rows.map((row) => [row.action, row.actorId, row.actorRole, row.summary])).toEqual([
-      ['TICKET_SUBMITTED', 'employee-1', 'employee', 'Submitted "Badge reader"'],
-      ['TICKET_APPROVED', 'helpdesk-1', 'helpdesk', 'Approved "Badge reader" with high priority'],
-      ['TICKET_ASSIGNED', 'helpdesk-1', 'helpdesk', 'Assigned "Badge reader" to Sam Reed (3h)'],
+      ['TICKET_SUBMITTED', 'employee-1', 'employee', `Submitted ${ref}`],
+      ['TICKET_APPROVED', 'helpdesk-1', 'helpdesk', `Approved ${ref} with high priority`],
+      ['TICKET_ASSIGNED', 'helpdesk-1', 'helpdesk', `Assigned ${ref} to user employee-2 (3h)`],
     ]);
+
+    // A rejection reason is free text too: it stays on the ticket, not in the log.
+    const other = await service.create({ title: 'Parking badge', description: 'Lost it.', teamId: 'facilities', issueType: 'access', project: 'Garage' }, employee);
+    await service.reject(other.id, { reason: 'Please ask reception for a temporary badge.' }, helpdesk);
+    const everything = JSON.stringify(await dataSource.getRepository(AuditLogEntity).find());
+    for (const text of ['Badge reader', 'Door will not open', 'Parking badge', 'Lost it', 'temporary badge']) expect(everything).not.toContain(text);
 
     const history = await service.auditEvents(ticket.id, employee);
     expect(history.map((event) => event.actorName)).toEqual(['Maya Stone', 'Leo Warren', 'Leo Warren']);
