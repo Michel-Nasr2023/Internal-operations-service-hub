@@ -207,10 +207,26 @@ describe('Password reset and administration (e2e)', () => {
       ...extra,
     });
     await data.getRepository(TicketEntity).save([
-      ticket('t-assigned', TicketStatus.ASSIGNED),
+      ticket('t-assigned', TicketStatus.ASSIGNED, { aiResult: { source: 'pending', requestedAt: now } }),
       ticket('t-working', TicketStatus.IN_PROGRESS, { claimedAt: now, dueAt: now }),
-      ticket('t-done', TicketStatus.RESOLVED, { resolvedAt: now }),
+      ticket('t-done', TicketStatus.RESOLVED, { resolvedAt: now, aiResult: { source: 'failed', failureCode: 'timeout', failureReason: 'Slow', attempts: 1, generatedAt: now } }),
     ] as TicketEntity[]);
+
+    // The figures on the admin pages are counted by the database; they must match what was just stored.
+    const read = async (path: string) => (await fetch(`${baseUrl}${path}`, { headers: { Authorization: `Bearer ${admin}` } })).json();
+    const people = (await read('/admin/users')) as Array<{ id: string; activeAssignments: number; openRequests: number }>;
+    expect(people.find((person) => person.id === 'leaver-1')).toMatchObject({ activeAssignments: 2, openRequests: 0 });
+    expect(people.find((person) => person.id === 'employee-1')).toMatchObject({ activeAssignments: 0, openRequests: 2 });
+    expect(((await read('/admin/overview')) as { tickets: object }).tickets).toMatchObject({
+      total: 3,
+      open: 2,
+      overdue: 1,
+      unassignedApproved: 0,
+      aiPending: 1,
+      aiFailed: 1,
+      byStatus: { [TicketStatus.ASSIGNED]: 1, [TicketStatus.IN_PROGRESS]: 1, [TicketStatus.RESOLVED]: 1 },
+    });
+    expect(((await read('/admin/system')) as { ai: object }).ai).toMatchObject({ pending: 1, failed: 1 });
 
     const blocked = await patch('/admin/users/leaver-1', { status: 'disabled' }, admin);
     expect(blocked.status).toBe(409);

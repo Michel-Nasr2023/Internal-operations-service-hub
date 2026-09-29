@@ -1,3 +1,5 @@
+import { API_URL, apiFetch } from './http';
+
 export type AuthRole = 'employee' | 'helpdesk' | 'assignee' | 'administrator';
 
 export interface AuthUser {
@@ -35,7 +37,7 @@ export interface DirectoryUser {
   avatarUpdatedAt?: string | null;
 }
 
-const apiUrl = import.meta.env.VITE_API_URL ?? 'http://localhost:3000/api';
+const apiUrl = API_URL;
 const AUTH_STORAGE_KEY = 'internal-ops-user';
 export const SESSION_EXPIRED_EVENT = 'internal-ops-session-expired';
 
@@ -75,8 +77,8 @@ export function getAuthHeaders(): Record<string, string> {
 }
 
 // Adds the session token and signs the user out when the backend rejects it (expired or invalid).
-export async function authFetch(url: string, init: RequestInit = {}): Promise<Response> {
-  const response = await fetch(url, { ...init, headers: { ...init.headers, ...getAuthHeaders() } });
+export async function authFetch(url: string, init: RequestInit = {}, timeoutMs?: number): Promise<Response> {
+  const response = await apiFetch(url, { ...init, headers: { ...init.headers, ...getAuthHeaders() } }, timeoutMs);
 
   if (response.status === 401) {
     clearStoredUser();
@@ -93,7 +95,7 @@ export async function authFetch(url: string, init: RequestInit = {}): Promise<Re
 }
 
 export async function requestPasswordReset(email: string): Promise<string> {
-  const response = await fetch(`${apiUrl}/auth/forgot-password`, {
+  const response = await apiFetch(`${apiUrl}/auth/forgot-password`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email }),
@@ -104,7 +106,7 @@ export async function requestPasswordReset(email: string): Promise<string> {
 }
 
 export async function checkResetLink(token: string): Promise<{ valid: boolean; purpose?: 'reset' | 'invite'; email?: string }> {
-  const response = await fetch(`${apiUrl}/auth/reset-password/check`, {
+  const response = await apiFetch(`${apiUrl}/auth/reset-password/check`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ token }),
@@ -113,7 +115,7 @@ export async function checkResetLink(token: string): Promise<{ valid: boolean; p
 }
 
 export async function resetPassword(token: string, newPassword: string): Promise<void> {
-  const response = await fetch(`${apiUrl}/auth/reset-password`, {
+  const response = await apiFetch(`${apiUrl}/auth/reset-password`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ token, newPassword }),
@@ -125,7 +127,7 @@ export async function resetPassword(token: string, newPassword: string): Promise
 }
 
 async function postJson(path: string, body: object, fallback: string): Promise<unknown> {
-  const response = await fetch(`${apiUrl}${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const response = await apiFetch(`${apiUrl}${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   const payload = await response.json().catch(() => null);
   if (!response.ok) throw new Error((Array.isArray(payload?.message) ? payload.message.join(' ') : payload?.message) ?? fallback);
   return payload;
@@ -141,11 +143,11 @@ export async function resetPasswordWithCode(email: string, code: string, newPass
 }
 
 export async function logoutUser(): Promise<void> {
-  await fetch(`${apiUrl}/auth/logout`, { method: 'POST', headers: getAuthHeaders() }).catch(() => undefined);
+  await apiFetch(`${apiUrl}/auth/logout`, { method: 'POST', headers: getAuthHeaders() }).catch(() => undefined);
 }
 
 export async function loginUser(credentials: LoginCredentials): Promise<AuthUser> {
-  const response = await fetch(`${apiUrl}/auth/login`, {
+  const response = await apiFetch(`${apiUrl}/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(credentials),
@@ -160,7 +162,7 @@ export async function loginUser(credentials: LoginCredentials): Promise<AuthUser
 }
 
 export async function signupUser(input: SignupInput): Promise<AuthUser> {
-  const response = await fetch(`${apiUrl}/auth/signup`, {
+  const response = await apiFetch(`${apiUrl}/auth/signup`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(input),

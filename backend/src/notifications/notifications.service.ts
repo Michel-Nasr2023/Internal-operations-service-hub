@@ -55,7 +55,7 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
     if (!notification) throw new NotFoundException('Notification not found');
     if (!notification.readAt) {
       notification.readAt = new Date().toISOString();
-      await this.notificationRepository.save(notification);
+      await this.notificationRepository.update({ id: notification.id }, { readAt: notification.readAt });
     }
     return notification;
   }

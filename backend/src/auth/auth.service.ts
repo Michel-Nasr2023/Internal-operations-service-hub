@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, Injectable, OnModuleInit, UnauthorizedException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { QueryFailedError, Repository } from 'typeorm';
 import { AuthenticatedUser, UserRole } from '../tickets/ticket.types';
 import { LoginRequestDto, SignupRequestDto } from './auth.dto';
 import { passwordProblem } from './password-policy';
@@ -8,6 +8,8 @@ import { hashPassword, isHashedPassword, verifyPassword } from './password';
 import { signToken } from './token';
 import { UserEntity } from './user.entity';
 import { AuditService } from '../audit/audit.service';
+import { currentRequestContext } from '../audit/request-context';
+import { AttemptLimiter, TooManyAttemptsException, waitDescription } from '../common/attempt-limiter';
 
 export type AuthenticatedSession = AuthenticatedUser & {
   email: string;
@@ -19,6 +21,8 @@ export type AuthenticatedSession = AuthenticatedUser & {
   token: string;
 };
 
+export type NewAccount = Pick<UserEntity, 'email' | 'password' | 'role' | 'firstName' | 'lastName' | 'jobTitle' | 'status' | 'createdAt'>;
+
 export interface DirectoryUser {
   id: string;
   firstName: string;
@@ -28,8 +32,18 @@ export interface DirectoryUser {
   avatarUpdatedAt?: string | null;
 }
 
+const SIGN_IN_WINDOW_MS = 15 * 60 * 1000;
+const FAILED_SIGN_INS_PER_ACCOUNT = 5;
+// Higher, because colleagues in one office usually share a network address.
+const FAILED_SIGN_INS_PER_ADDRESS = 30;
+const SIGN_UPS_PER_ADDRESS_PER_HOUR = 20;
+
 @Injectable()
 export class AuthService implements OnModuleInit {
+  private readonly failedSignInsByAccount = new AttemptLimiter(FAILED_SIGN_INS_PER_ACCOUNT, SIGN_IN_WINDOW_MS);
+  private readonly failedSignInsByAddress = new AttemptLimiter(FAILED_SIGN_INS_PER_ADDRESS, SIGN_IN_WINDOW_MS);
+  private readonly signUpsByAddress = new AttemptLimiter(SIGN_UPS_PER_ADDRESS_PER_HOUR, 60 * 60 * 1000);
+
   constructor(
     @InjectRepository(UserEntity) private readonly userRepository: Repository<UserEntity>,
     private readonly auditService: AuditService,
@@ -45,10 +59,10 @@ export class AuthService implements OnModuleInit {
     if ((await this.userRepository.count({ where: { role: 'administrator' } })) > 0) return;
     if (await this.userRepository.findOneBy({ email: 'admin@company.com' })) return;
 
-    await this.userRepository.save({
+    await this.userRepository.insert({
       id: 'admin-1',
       email: 'admin@company.com',
-      password: hashPassword('Admin12345'),
+      password: await hashPassword('Admin12345'),
       role: 'administrator',
       firstName: 'Ada',
       lastName: 'Admin',
@@ -61,11 +75,27 @@ export class AuthService implements OnModuleInit {
 
   async login(dto: LoginRequestDto): Promise<AuthenticatedSession> {
     const normalizedEmail = dto.email.trim().toLowerCase();
+    const address = currentRequestContext()?.ip ?? 'unknown';
+
+    // Checked before any database or password work, so a flood of guesses is cheap to turn away.
+    const accountWait = this.failedSignInsByAccount.blockedFor(normalizedEmail);
+    if (accountWait > 0) {
+      throw new TooManyAttemptsException(
+        `Too many failed sign-in attempts for this account. Try again ${waitDescription(accountWait)}, or reset your password.`,
+        accountWait,
+      );
+    }
+    const addressWait = this.failedSignInsByAddress.blockedFor(address);
+    if (addressWait > 0) {
+      throw new TooManyAttemptsException(`Too many failed sign-in attempts from your network. Try again ${waitDescription(addressWait)}.`, addressWait);
+    }
+
     const user = await this.userRepository.findOne({ where: { email: normalizedEmail } });
 
-    if (!user || !verifyPassword(dto.password, user.password)) {
+    if (!user || !(await verifyPassword(dto.password, user.password))) {
       // The client always sees the same message; the log records which check failed.
       await this.recordLoginFailure(normalizedEmail, user ? 'wrong password' : 'unknown email', user);
+      await this.countFailedSignIn(normalizedEmail, address, user);
       throw new UnauthorizedException('Invalid email or password');
     }
 
@@ -74,8 +104,9 @@ export class AuthService implements OnModuleInit {
       throw new UnauthorizedException('This account is not active');
     }
 
+    this.failedSignInsByAccount.reset(normalizedEmail);
     if (!isHashedPassword(user.password)) {
-      await this.userRepository.update({ id: user.id }, { password: hashPassword(dto.password) });
+      await this.userRepository.update({ id: user.id }, { password: await hashPassword(dto.password) });
     }
 
     await this.auditService.record({
@@ -110,7 +141,36 @@ export class AuthService implements OnModuleInit {
     });
   }
 
+  // Only the attempt that reaches a limit is audited, so a lock shows up once instead of once per refused try.
+  private async countFailedSignIn(email: string, address: string, user: UserEntity | null): Promise<void> {
+    const minutes = SIGN_IN_WINDOW_MS / 60000;
+    if (this.failedSignInsByAccount.hit(email)) {
+      await this.auditService.record({
+        category: 'auth',
+        action: 'LOGIN_LOCKED',
+        outcome: 'denied',
+        target: user ? { type: 'user', id: user.id } : undefined,
+        summary: `Sign-in for ${email} paused for ${minutes} minutes after ${FAILED_SIGN_INS_PER_ACCOUNT} failed attempts`,
+        details: { email, scope: 'account' },
+      });
+    }
+    if (this.failedSignInsByAddress.hit(address)) {
+      await this.auditService.record({
+        category: 'auth',
+        action: 'LOGIN_LOCKED',
+        outcome: 'denied',
+        summary: `Sign-in from ${address} paused for ${minutes} minutes after ${FAILED_SIGN_INS_PER_ADDRESS} failed attempts`,
+        details: { address, scope: 'address' },
+      });
+    }
+  }
+
   async signup(dto: SignupRequestDto): Promise<AuthenticatedSession> {
+    const address = currentRequestContext()?.ip ?? 'unknown';
+    const wait = this.signUpsByAddress.blockedFor(address);
+    if (wait > 0) throw new TooManyAttemptsException(`Too many sign-up attempts from your network. Try again ${waitDescription(wait)}.`, wait);
+    this.signUpsByAddress.hit(address);
+
     const normalizedEmail = dto.email.trim().toLowerCase();
     const existing = await this.userRepository.findOne({ where: { email: normalizedEmail } });
 
@@ -128,21 +188,16 @@ export class AuthService implements OnModuleInit {
       throw new ConflictException('An account with this email already exists');
     }
 
-    const id = await this.nextUserId();
-    const now = new Date().toISOString();
-
-    const user = await this.userRepository.save({
-      id,
+    const user = await this.createAccount({
       email: normalizedEmail,
-      password: hashPassword(dto.password),
+      password: await hashPassword(dto.password),
       // Self-service accounts are always employees; Helpdesk access is granted with `npm run user:role`.
       role: 'employee',
       firstName: dto.firstName,
       lastName: dto.lastName,
       jobTitle: dto.jobTitle,
-      employeeId: id,
       status: 'active',
-      createdAt: now,
+      createdAt: new Date().toISOString(),
     });
 
     await this.auditService.record({
@@ -183,9 +238,27 @@ export class AuthService implements OnModuleInit {
     };
   }
 
-  // Next free numeric account ID; also used when administrators create accounts.
-  async nextUserId(): Promise<string> {
-    const users = await this.userRepository.find();
+  // Creates an account under the next free numeric ID (also used when administrators add people). Two sign-ups
+  // at the same moment can pick the same ID: insert refuses the duplicate (save would silently overwrite the
+  // other person's new account), and the later one takes the next ID instead.
+  async createAccount(fields: NewAccount): Promise<UserEntity> {
+    for (let attempt = 1; ; attempt += 1) {
+      const id = await this.nextUserId();
+      const user = { ...fields, id, employeeId: id } as UserEntity;
+      try {
+        await this.userRepository.insert(user);
+        return user;
+      } catch (error) {
+        const duplicate = error instanceof QueryFailedError && /UNIQUE constraint failed/i.test(error.message);
+        if (!duplicate || attempt === 5) throw error;
+        if (await this.userRepository.findOneBy({ email: fields.email })) throw new ConflictException('An account with this email already exists');
+      }
+    }
+  }
+
+  // Next free numeric account ID.
+  private async nextUserId(): Promise<string> {
+    const users = await this.userRepository.find({ select: { id: true } });
     const highestNumericId = users.reduce((highest, user) => {
       const parsed = Number(user.id);
       return Number.isInteger(parsed) && parsed > highest ? parsed : highest;
@@ -224,13 +297,15 @@ export class AuthService implements OnModuleInit {
       },
     ];
 
-    await this.userRepository.save(
-      employees.map((employee) => ({
-        ...employee,
-        password: hashPassword(employee.password),
-        status: 'active',
-        createdAt: now,
-      })),
+    await this.userRepository.insert(
+      await Promise.all(
+        employees.map(async (employee) => ({
+          ...employee,
+          password: await hashPassword(employee.password),
+          status: 'active' as const,
+          createdAt: now,
+        })),
+      ),
     );
   }
 }

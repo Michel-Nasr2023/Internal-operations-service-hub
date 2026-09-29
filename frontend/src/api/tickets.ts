@@ -61,6 +61,8 @@ export interface TicketAiAnalysis {
   failureCode?: string;
   failureReason?: string;
   attempts?: number;
+  // After a temporary AI outage: when the hub will try again by itself.
+  retryAt?: string;
 }
 
 const apiUrl = import.meta.env.VITE_API_URL ?? 'http://localhost:3000/api';
@@ -182,10 +184,17 @@ export async function resolveTicket(id: string, feedback: string): Promise<Ticke
   return response.json() as Promise<Ticket>;
 }
 
-export async function createTicket(input: CreateTicketInput): Promise<Ticket> {
+// A new key for each ticket submission (see createTicket). randomUUID needs HTTPS or localhost, hence the fallback.
+export function newSubmissionKey(): string {
+  return crypto.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
+}
+
+// `submissionKey` stays the same when the same form is sent again (e.g. after a network error), so the server
+// returns the ticket it may already have created instead of a duplicate.
+export async function createTicket(input: CreateTicketInput, submissionKey: string): Promise<Ticket> {
   const response = await authFetch(`${apiUrl}/tickets`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'Idempotency-Key': submissionKey },
     body: JSON.stringify(input),
   });
 

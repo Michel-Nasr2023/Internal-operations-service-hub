@@ -1,4 +1,5 @@
 import { authFetch } from './auth';
+import { TRANSFER_TIMEOUT_MS } from './http';
 
 export interface Profile {
   id: string;
@@ -55,7 +56,7 @@ export async function changePassword(currentPassword: string, newPassword: strin
 export async function uploadAvatar(file: File): Promise<Profile> {
   const form = new FormData();
   form.append('avatar', file, file.name);
-  const response = await authFetch(`${apiUrl}/profile/avatar`, { method: 'POST', body: form });
+  const response = await authFetch(`${apiUrl}/profile/avatar`, { method: 'POST', body: form }, TRANSFER_TIMEOUT_MS);
   if (!response.ok) throw await readError(response, 'The photo could not be uploaded.');
   return response.json() as Promise<Profile>;
 }

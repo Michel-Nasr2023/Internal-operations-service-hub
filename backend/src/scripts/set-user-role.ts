@@ -6,6 +6,7 @@ import { randomUUID } from 'node:crypto';
 import { DataSource } from 'typeorm';
 import { AuditLogEntity } from '../audit/audit-log.entity';
 import { UserEntity } from '../auth/user.entity';
+import { DATABASE_FILE } from '../common/env';
 
 const ROLES = ['employee', 'helpdesk', 'administrator'] as const;
 
@@ -16,7 +17,8 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  const dataSource = await new DataSource({ type: 'sqlite', database: 'data/tickets.sqlite', entities: [UserEntity, AuditLogEntity] }).initialize();
+  // The server may be running and writing at the same moment: wait for the file instead of failing.
+  const dataSource = await new DataSource({ type: 'sqlite', database: DATABASE_FILE, busyTimeout: 5000, entities: [UserEntity, AuditLogEntity] }).initialize();
   try {
     const users = dataSource.getRepository(UserEntity);
     const email = emailArg.trim().toLowerCase();

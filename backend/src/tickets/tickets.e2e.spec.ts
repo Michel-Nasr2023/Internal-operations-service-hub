@@ -16,7 +16,7 @@ import { TicketViewEntity } from './ticket-view.entity';
 import { AuditLogEntity } from '../audit/audit-log.entity';
 import { TicketAttachmentEntity } from './ticket-attachment.entity';
 import { DataSource } from 'typeorm';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -107,6 +107,26 @@ describe('Tickets API (e2e)', () => {
       aiResult: { source: string; clarifiedDescription: string };
     };
     expect(readBack.aiResult).toMatchObject({ source: 'ai', clarifiedDescription: expect.stringContaining('office Wi-Fi') });
+  });
+
+  it('creates one ticket per submission, even when the same submission arrives more than once', async () => {
+    const body = JSON.stringify({ title: 'Printer jam', description: 'Paper is stuck in tray 2.', teamId: 'it', issueType: 'hardware', project: 'Floor 2' });
+    const send = (key: string) =>
+      request('/tickets', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': key, ...identity('employee-1', 'employee') }, body });
+
+    // Two copies at the same moment (a double click), then a retry after a dropped connection.
+    const responses = [...(await Promise.all([send('submission-0001'), send('submission-0001')])), await send('submission-0001')];
+    const ids = await Promise.all(
+      responses.map(async (response) => {
+        expect(response.status).toBe(201);
+        return ((await response.json()) as { id: string }).id;
+      }),
+    );
+    expect(new Set(ids).size).toBe(1);
+    expect(await app.get(DataSource).getRepository(TicketEntity).countBy({ title: 'Printer jam' })).toBe(1);
+
+    expect((await send('bad key!')).status).toBe(400);
+    await app.get(TicketAnalysisQueue).whenIdle();
   });
 
   it('rejects requests without a valid token, including spoofed identity headers', async () => {
@@ -234,6 +254,30 @@ describe('Tickets API (e2e)', () => {
 
       const history = (await (await request(`/tickets/${ticketId}/audit-events`, { headers: identity('employee-1', 'employee') })).json()) as Array<{ action: string; reason?: string }>;
       expect(history.at(-1)).toMatchObject({ action: 'ATTACHMENTS_ADDED', reason: 'screen.png, notes.txt' });
+    });
+
+    it('answers a missing or unreadable stored file with an error for that download only', async () => {
+      const ticketId = await createTicket();
+      const uploaded = (await (
+        await upload(ticketId, 'employee-1', [
+          { name: 'a.txt', bytes: Buffer.from('one') },
+          { name: 'b.txt', bytes: Buffer.from('two') },
+        ])
+      ).json()) as Array<{ id: string }>;
+
+      // A folder where the file should be: reading it used to raise an unhandled stream error that stopped the server.
+      rmSync(join(attachmentsDir, uploaded[0].id));
+      mkdirSync(join(attachmentsDir, uploaded[0].id));
+      rmSync(join(attachmentsDir, uploaded[1].id));
+
+      const unreadable = await request(`/tickets/${ticketId}/attachments/${uploaded[0].id}/download`, { headers: identity('employee-1', 'employee') });
+      const missing = await request(`/tickets/${ticketId}/attachments/${uploaded[1].id}/download`, { headers: identity('employee-1', 'employee') });
+      expect(unreadable.status).toBe(404);
+      expect(missing.status).toBe(404);
+      expect(((await missing.json()) as { message: string }).message).toBe('The attachment file is missing from storage');
+
+      // The server is still answering.
+      expect((await request(`/tickets/${ticketId}`, { headers: identity('employee-1', 'employee') })).status).toBe(200);
     });
 
     it('refuses disallowed, disguised and oversized files without storing anything', async () => {

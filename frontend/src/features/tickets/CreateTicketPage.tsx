@@ -1,5 +1,5 @@
-import { FormEvent, useEffect, useState } from 'react';
-import { createTicket, CreateTicketInput, getMyTickets, Ticket } from '../../api/tickets';
+import { FormEvent, useEffect, useRef, useState } from 'react';
+import { createTicket, CreateTicketInput, getMyTickets, newSubmissionKey, Ticket } from '../../api/tickets';
 import { uploadAttachments } from '../../api/attachments';
 import { AttachmentPicker } from './AttachmentPicker';
 import { TicketAttachments } from './TicketAttachments';
@@ -54,6 +54,8 @@ export function CreateTicketPage({ userId, externalOpenTicketId, onExternalOpenH
   const [statusFilter, setStatusFilter] = useState('all');
   const [teamFilter, setTeamFilter] = useState('all');
   const [sortOrder, setSortOrder] = useState<SortOrder>('newest');
+  // The submission in progress (or last failed): its form content and idempotency key.
+  const submission = useRef<{ content: string; key: string } | null>(null);
 
   async function loadTickets() {
     setIsLoadingTickets(true);
@@ -95,8 +97,13 @@ export function CreateTicketPage({ userId, externalOpenTicketId, onExternalOpenH
     setAttachmentWarning('');
     setCreatedTicket(null);
 
+    // Same form sent again after a failure: same key, so no duplicate. Changed form: a new submission, new key.
+    const content = JSON.stringify(form);
+    if (submission.current?.content !== content) submission.current = { content, key: newSubmissionKey() };
+
     try {
-      const ticket = await createTicket(form);
+      const ticket = await createTicket(form, submission.current.key);
+      submission.current = null;
       // The ticket is saved even if its files fail to upload; the employee is told and can add them later.
       if (files.length > 0) {
         try {

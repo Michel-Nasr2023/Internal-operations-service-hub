@@ -28,12 +28,16 @@ function providerError(status: number, message: string): Response {
   return new Response(JSON.stringify({ error: { message } }), { status });
 }
 
-// Skips the real pauses between retries.
+// Skips the real pauses between retries, and has a clock the test can move forward.
 class TestAiService extends RqstyAiService {
   readonly pauses: number[] = [];
+  clock = Date.now();
   protected override sleep(ms: number): Promise<void> {
     this.pauses.push(ms);
     return Promise.resolve();
+  }
+  protected override now(): number {
+    return this.clock;
   }
 }
 
@@ -126,9 +130,28 @@ describe('RqstyAiService', () => {
       failureCode: 'provider-error',
       failureReason: 'The AI service reported an error (503) after 3 attempts.',
       attempts: 3,
+      temporary: true,
       generatedAt: expect.any(String),
     });
     expect(result).not.toHaveProperty('clarifiedDescription');
+  });
+
+  it('pauses AI requests after 3 outages in a row, then tries again once the pause is over', async () => {
+    const fetchSpy = jest.spyOn(global, 'fetch').mockImplementation(async () => providerError(503, 'Service unavailable'));
+    const service = new TestAiService();
+
+    for (let ticket = 1; ticket <= 3; ticket += 1) {
+      expect(await service.analyzeTicket(input)).toMatchObject({ source: 'failed', failureCode: 'provider-error', temporary: true });
+    }
+    const callsSoFar = fetchSpy.mock.calls.length;
+
+    // Paused: the next ticket fails at once, without waiting on the provider.
+    expect(await service.analyzeTicket(input)).toMatchObject({ source: 'failed', failureCode: 'unavailable', temporary: true, attempts: 0 });
+    expect(fetchSpy).toHaveBeenCalledTimes(callsSoFar);
+
+    service.clock += 2 * 60 * 1000;
+    fetchSpy.mockImplementation(async () => completion(JSON.stringify(validAnalysis)));
+    expect(await service.analyzeTicket(input)).toMatchObject({ source: 'ai' });
   });
 
   it('recovers when a retry succeeds', async () => {
@@ -145,11 +168,12 @@ describe('RqstyAiService', () => {
     const fetchSpy = jest.spyOn(global, 'fetch').mockRejectedValueOnce(timeout);
 
     const timedOut = await new TestAiService().analyzeTicket(input);
-    expect(timedOut).toMatchObject({ source: 'failed', failureCode: 'timeout', attempts: 1 });
+    // A timeout is worth trying again later (automatically); a refused API key is not.
+    expect(timedOut).toMatchObject({ source: 'failed', failureCode: 'timeout', attempts: 1, temporary: true });
     expect(timedOut.source === 'failed' && timedOut.failureReason).toMatch(/did not answer within \d+ seconds/);
 
     fetchSpy.mockReset().mockResolvedValueOnce(providerError(401, 'invalid key'));
-    expect(await new TestAiService().analyzeTicket(input)).toMatchObject({ source: 'failed', failureCode: 'provider-error', attempts: 1 });
+    expect(await new TestAiService().analyzeTicket(input)).toMatchObject({ source: 'failed', failureCode: 'provider-error', attempts: 1, temporary: false });
     expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
 

@@ -137,4 +137,49 @@ describe('Auth API (e2e)', () => {
     const succeeded = await app.get(DataSource).getRepository(AuditLogEntity).findBy({ action: 'LOGIN_SUCCEEDED' });
     expect(succeeded.length).toBeGreaterThan(0);
   });
+
+  it('gives people who sign up at the same moment their own accounts', async () => {
+    const emails = ['twin1@company.com', 'twin2@company.com', 'twin3@company.com'];
+    const responses = await Promise.all(
+      emails.map((email, index) =>
+        fetch(`${baseUrl}/auth/signup`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password: 'TwinPass123', firstName: 'Twin', lastName: String(index + 1) }),
+        }),
+      ),
+    );
+    expect(responses.map((response) => response.status)).toEqual([201, 201, 201]);
+
+    const accounts = (await Promise.all(responses.map((response) => response.json()))) as Array<{ id: string; email: string }>;
+    expect(new Set(accounts.map((account) => account.id)).size).toBe(3);
+    const stored = await app.get(DataSource).getRepository(UserEntity).find();
+    for (const account of accounts) expect(stored.find((user) => user.id === account.id)?.email).toBe(account.email);
+  });
+
+  it('pauses sign-in for an account after 5 wrong passwords, without affecting other accounts', async () => {
+    await fetch(`${baseUrl}/auth/signup`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: 'target@company.com', password: 'RightPass123', firstName: 'Tara', lastName: 'Get' }),
+    });
+    const signIn = (email: string, password: string) =>
+      fetch(`${baseUrl}/auth/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password }) });
+
+    for (let attempt = 1; attempt <= 5; attempt += 1) {
+      expect((await signIn('target@company.com', `wrong-guess-${attempt}`)).status).toBe(401);
+    }
+
+    // Even the right password waits now, so guessing cannot continue.
+    const locked = await signIn('target@company.com', 'RightPass123');
+    expect(locked.status).toBe(429);
+    expect(Number(locked.headers.get('retry-after'))).toBeGreaterThan(800);
+    expect(((await locked.json()) as { message: string }).message).toContain('Try again in 15 minutes');
+
+    expect((await signIn('employee@company.com', 'employee123')).status).toBe(201);
+
+    const locks = await app.get(DataSource).getRepository(AuditLogEntity).findBy({ action: 'LOGIN_LOCKED' });
+    expect(locks).toHaveLength(1);
+    expect(locks[0]).toMatchObject({ outcome: 'denied', summary: expect.stringContaining('target@company.com') });
+  });
 });

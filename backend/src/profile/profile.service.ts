@@ -1,11 +1,12 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { randomUUID } from 'node:crypto';
-import { createReadStream, ReadStream } from 'node:fs';
-import { mkdir, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { Repository } from 'typeorm';
 import { AuditService } from '../audit/audit.service';
+import { DATA_DIR } from '../common/env';
+import { openStoredFile, StoredFile } from '../common/stored-files';
 import { passwordProblem } from '../auth/password-policy';
 import { hashPassword, verifyPassword } from '../auth/password';
 import { signToken } from '../auth/token';
@@ -38,7 +39,7 @@ export interface UploadedAvatar {
 
 @Injectable()
 export class ProfileService {
-  private readonly avatarDir = resolve(process.env.AVATARS_DIR ?? join('data', 'avatars'));
+  private readonly avatarDir = process.env.AVATARS_DIR ? resolve(process.env.AVATARS_DIR) : join(DATA_DIR, 'avatars');
 
   constructor(
     @InjectRepository(UserEntity) private readonly userRepository: Repository<UserEntity>,
@@ -89,14 +90,14 @@ export class ProfileService {
       throw new BadRequestException(message);
     };
 
-    if (!verifyPassword(dto.currentPassword, record.password)) await fail('wrong current password', 'Your current password is incorrect.');
+    if (!(await verifyPassword(dto.currentPassword, record.password))) await fail('wrong current password', 'Your current password is incorrect.');
     const weakness = passwordProblem(dto.newPassword);
     if (weakness) await fail('new password too weak', weakness);
     if (dto.newPassword === dto.currentPassword) await fail('same as current password', 'Choose a password that is different from your current one.');
 
     const passwordChangedAt = new Date().toISOString();
     // Every other session is signed out; the caller gets a new token issued after that moment.
-    await this.userRepository.update({ id: record.id }, { password: hashPassword(dto.newPassword), passwordChangedAt, sessionsRevokedAt: passwordChangedAt });
+    await this.userRepository.update({ id: record.id }, { password: await hashPassword(dto.newPassword), passwordChangedAt, sessionsRevokedAt: passwordChangedAt });
     await this.auditService.record({
       category: 'auth',
       action: 'PASSWORD_CHANGED',
@@ -150,26 +151,20 @@ export class ProfileService {
   }
 
   // Any signed-in colleague may see a profile photo.
-  async openAvatar(userId: string): Promise<{ stream: ReadStream; mimeType: string; size: number }> {
+  async openAvatar(userId: string): Promise<{ file: StoredFile; mimeType: string }> {
     const record = await this.userRepository.findOneBy({ id: userId });
     if (!record?.avatarKey) throw new NotFoundException('This user has no profile photo');
 
-    const path = join(this.avatarDir, record.avatarKey);
-    let size: number;
+    const file = await openStoredFile(join(this.avatarDir, record.avatarKey), 'The profile photo is missing from storage');
     try {
-      size = (await stat(path)).size;
+      // The first bytes tell PNG, WebP and JPEG apart.
+      const { buffer: header } = await file.handle.read(Buffer.alloc(16), 0, 16, 0);
+      const mimeType = header[0] === 0x89 ? 'image/png' : header.subarray(8, 12).toString('latin1') === 'WEBP' ? 'image/webp' : 'image/jpeg';
+      return { file, mimeType };
     } catch {
-      throw new NotFoundException('The profile photo is missing from storage');
+      await file.handle.close().catch(() => undefined);
+      throw new ServiceUnavailableException('The profile photo cannot be read right now. Please try again in a moment.');
     }
-    const header = await new Promise<Buffer>((resolveHeader, reject) => {
-      const chunks: Buffer[] = [];
-      createReadStream(path, { start: 0, end: 15 })
-        .on('data', (chunk) => chunks.push(chunk as Buffer))
-        .on('end', () => resolveHeader(Buffer.concat(chunks)))
-        .on('error', reject);
-    });
-    const mimeType = header[0] === 0x89 ? 'image/png' : header.subarray(8, 12).toString('latin1') === 'WEBP' ? 'image/webp' : 'image/jpeg';
-    return { stream: createReadStream(path), mimeType, size };
   }
 
   private async load(userId: string): Promise<UserEntity> {

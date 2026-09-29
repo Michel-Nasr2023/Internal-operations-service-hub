@@ -58,8 +58,11 @@ export interface OutboxEmail {
   subject: string;
   body: string;
   purpose: string;
-  status: 'sent' | 'failed' | 'not-configured';
+  // retrying: a temporary problem; the server sends it again automatically at nextAttemptAt.
+  status: 'sent' | 'retrying' | 'failed' | 'not-configured';
   error?: string | null;
+  attempts?: number;
+  nextAttemptAt?: string | null;
   sentAt?: string | null;
   createdAt: string;
 }

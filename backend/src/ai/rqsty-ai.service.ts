@@ -1,4 +1,4 @@
-import 'dotenv/config';
+import '../common/env';
 
 import { Injectable, Logger } from '@nestjs/common';
 import { AI_ISSUE_TYPES, AI_SEVERITIES, AiFailureCode, AiIssueType, AiSeverity, TicketAiFailure, TicketAiResult } from '../tickets/ticket.types';
@@ -18,6 +18,9 @@ const REQUEST_TIMEOUT_MS = Number(process.env.RQSTY_TIMEOUT_MS ?? 90000);
 const MAX_ATTEMPTS = 3;
 // Pause before attempt 2 and 3 when the provider is busy or failing.
 const RETRY_DELAYS_MS = [5000, 15000];
+// After this many tickets in a row hit an outage, requests pause for OUTAGE_PAUSE_MS.
+const OUTAGES_BEFORE_PAUSE = 3;
+const OUTAGE_PAUSE_MS = 2 * 60 * 1000;
 const MAX_MISSING_INFORMATION = 5;
 
 const SEVERITY_SYNONYMS: Record<string, AiSeverity> = {
@@ -67,12 +70,18 @@ export class RqstyAiService {
   private readonly apiUrl = process.env.RQSTY_API_URL ?? 'https://router.requesty.ai/v1/chat/completions';
   private readonly model = process.env.RQSTY_MODEL ?? 'nvidia/nemotron-3-super-120b-a12b';
   private readonly apiKey = process.env.RQSTY_API_KEY;
+  private consecutiveOutages = 0;
+  private pausedUntil = 0;
 
   // Never throws. Returns the model's analysis, or a failure record that says why the AI could not answer.
   // There is deliberately no hard-coded substitute analysis: Helpdesk should know when the AI did not work.
   async analyzeTicket(input: TicketAnalysisInput): Promise<TicketAiResult | TicketAiFailure> {
     if (!this.apiKey) {
-      return this.failure('not-configured', 'The AI assistant is not configured on the server (RQSTY_API_KEY is missing).', 0);
+      return this.failure('not-configured', 'The AI assistant is not configured on the server (RQSTY_API_KEY is missing).', 0, false);
+    }
+    // While paused after repeated outages, tickets fail at once instead of each waiting for the service to time out.
+    if (this.now() < this.pausedUntil) {
+      return this.failure('unavailable', 'The AI service has not been responding, so this ticket was not sent to it yet.', 0, true);
     }
 
     let lastError: AnalysisError | undefined;
@@ -83,7 +92,9 @@ export class RqstyAiService {
       attemptsMade = attempt;
       try {
         const content = await this.requestCompletion(input, invalidReply);
-        return this.parseAnalysis(content, input, attempt);
+        const analysis = this.parseAnalysis(content, input, attempt);
+        this.consecutiveOutages = 0;
+        return analysis;
       } catch (error) {
         lastError = error instanceof AnalysisError ? error : new AnalysisError('provider-error', String(error), true);
         this.logger.warn(`AI analysis attempt ${attempt}/${MAX_ATTEMPTS} failed (${lastError.code}): ${lastError.message.slice(0, 300)}`);
@@ -94,12 +105,33 @@ export class RqstyAiService {
       }
     }
 
-    return this.failure(lastError?.code ?? 'provider-error', this.describeFailure(lastError, attemptsMade), attemptsMade);
+    // Temporary: the service was unreachable, too slow or overloaded. Not temporary: it answered, but badly
+    // (unusable format) or refused the request (e.g. a wrong API key), which waiting will not fix.
+    const code = lastError?.code ?? 'provider-error';
+    const temporary = code === 'timeout' || (code !== 'invalid-response' && !!lastError?.retryable);
+    if (temporary) this.recordOutage();
+    else this.consecutiveOutages = 0;
+    return this.failure(code, this.describeFailure(lastError, attemptsMade), attemptsMade, temporary);
   }
 
   // Overridden in tests to skip the real pauses.
   protected sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  // Overridden in tests to move time forward.
+  protected now(): number {
+    return Date.now();
+  }
+
+  // After several outages in a row, stop sending requests for a while. The first request after the pause is a
+  // test: if it fails again the pause starts over, if it succeeds everything runs normally again.
+  private recordOutage(): void {
+    this.consecutiveOutages += 1;
+    if (this.consecutiveOutages >= OUTAGES_BEFORE_PAUSE) {
+      this.pausedUntil = this.now() + OUTAGE_PAUSE_MS;
+      this.logger.warn(`The AI service failed ${this.consecutiveOutages} times in a row; pausing AI requests for ${OUTAGE_PAUSE_MS / 60000} minutes.`);
+    }
   }
 
   private async requestCompletion(input: TicketAnalysisInput, invalidReply?: string): Promise<string> {
@@ -239,7 +271,7 @@ export class RqstyAiService {
     }
   }
 
-  private failure(code: AiFailureCode, reason: string, attempts: number): TicketAiFailure {
-    return { source: 'failed', failureCode: code, failureReason: reason, attempts, generatedAt: new Date().toISOString() };
+  private failure(code: AiFailureCode, reason: string, attempts: number, temporary: boolean): TicketAiFailure {
+    return { source: 'failed', failureCode: code, failureReason: reason, attempts, temporary, generatedAt: new Date().toISOString() };
   }
 }

@@ -1,11 +1,12 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { randomUUID } from 'node:crypto';
-import { createReadStream, ReadStream } from 'node:fs';
-import { mkdir, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { In, Repository } from 'typeorm';
 import { UserEntity } from '../auth/user.entity';
+import { DATA_DIR } from '../common/env';
+import { openStoredFile, StoredFile } from '../common/stored-files';
 import { checkAttachment, cleanFileName, MAX_FILES_PER_TICKET, MAX_FILES_PER_UPLOAD } from './attachment-rules';
 import { AttachmentStage, TicketAttachmentEntity } from './ticket-attachment.entity';
 import { TicketEntity } from './ticket.entity';
@@ -34,7 +35,7 @@ export interface AttachmentView {
 @Injectable()
 export class TicketAttachmentsService {
   // Local-disk storage for this deployment; ADR-001 keeps file bytes out of the database.
-  private readonly storageDir = resolve(process.env.ATTACHMENTS_DIR ?? join('data', 'attachments'));
+  private readonly storageDir = process.env.ATTACHMENTS_DIR ? resolve(process.env.ATTACHMENTS_DIR) : join(DATA_DIR, 'attachments');
 
   constructor(
     @InjectRepository(TicketAttachmentEntity) private readonly attachmentRepository: Repository<TicketAttachmentEntity>,
@@ -86,7 +87,8 @@ export class TicketAttachmentsService {
           storageKey: id,
           createdAt: new Date().toISOString(),
         });
-        saved.push(await this.attachmentRepository.save(attachment));
+        await this.attachmentRepository.insert(attachment);
+        saved.push(attachment);
       }
     } catch (error) {
       // Undo a partial upload: remove stored files and their metadata.
@@ -99,18 +101,13 @@ export class TicketAttachmentsService {
     return this.present(saved);
   }
 
-  async openForDownload(ticketId: string, attachmentId: string, user: AuthenticatedUser): Promise<{ attachment: TicketAttachmentEntity; stream: ReadStream }> {
+  async openForDownload(ticketId: string, attachmentId: string, user: AuthenticatedUser): Promise<{ attachment: TicketAttachmentEntity; file: StoredFile }> {
     await this.getReadableTicket(ticketId, user);
     const attachment = await this.attachmentRepository.findOneBy({ id: attachmentId, ticketId });
     if (!attachment) throw new NotFoundException('Attachment not found');
 
-    const path = join(this.storageDir, attachment.storageKey);
-    try {
-      await stat(path);
-    } catch {
-      throw new NotFoundException('The attachment file is missing from storage');
-    }
-    return { attachment, stream: createReadStream(path) };
+    const file = await openStoredFile(join(this.storageDir, attachment.storageKey), 'The attachment file is missing from storage');
+    return { attachment, file };
   }
 
   private uploadStage(ticket: TicketEntity, user: AuthenticatedUser): AttachmentStage {

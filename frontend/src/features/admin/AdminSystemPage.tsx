@@ -9,8 +9,13 @@ function formatUptime(seconds: number): string {
 }
 
 const PURPOSE_LABELS: Record<string, string> = { 'password-reset': 'Password reset', 'account-invite': 'Invitation' };
-const DELIVERY_LABELS: Record<string, string> = { sent: 'Sent', failed: 'Failed', 'not-configured': 'Not sent' };
-const DELIVERY_CLASSES: Record<string, string> = { sent: 'status-resolved', failed: 'status-rejected', 'not-configured': 'status-pending-helpdesk-review' };
+const DELIVERY_LABELS: Record<string, string> = { sent: 'Sent', retrying: 'Retrying', failed: 'Failed', 'not-configured': 'Not sent' };
+const DELIVERY_CLASSES: Record<string, string> = {
+  sent: 'status-resolved',
+  retrying: 'status-assigned',
+  failed: 'status-rejected',
+  'not-configured': 'status-pending-helpdesk-review',
+};
 
 export function AdminSystemPage() {
   const [status, setStatus] = useState<SystemStatus | null>(null);
@@ -104,8 +109,9 @@ export function AdminSystemPage() {
             <section className="admin-panel" aria-labelledby="outbox-heading">
               <h3 id="outbox-heading">Email outbox</h3>
               <p className="settings-hint">
-                Every email the system sends (password resets, invitations) and whether it was delivered. When no mail server is configured, this is also where
-                the emails can be read. Treat them as confidential: each contains a working reset link or code.
+                Every email the system sends (password resets, invitations) and whether it was delivered. If the mail server is briefly unreachable, the email
+                is sent again automatically (up to 3 attempts). When no mail server is configured, this is also where the emails can be read. Treat them as
+                confidential: each contains a working reset link or code.
               </p>
               {outbox.length === 0 ? (
                 <p className="empty-state">No emails sent yet.</p>
@@ -126,7 +132,15 @@ export function AdminSystemPage() {
                       </button>
                       {openEmail?.id === email.id && (
                         <>
-                          {email.error && <p className="message error">Delivery failed: {email.error}</p>}
+                          {email.error && (
+                            <p className="message error">
+                              {email.status === 'retrying' ? 'Temporary problem' : 'Delivery failed'}
+                              {email.attempts && email.attempts > 1 ? ` after ${email.attempts} attempts` : ''}: {email.error}
+                              {email.status === 'retrying' && email.nextAttemptAt && (
+                                <> · trying again automatically at {new Date(email.nextAttemptAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</>
+                              )}
+                            </p>
+                          )}
                           <pre className="outbox-body">{email.body}</pre>
                         </>
                       )}

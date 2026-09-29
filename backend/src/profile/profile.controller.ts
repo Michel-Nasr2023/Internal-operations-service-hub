@@ -1,6 +1,7 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Res, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Logger, Param, Patch, Post, Res, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Response } from 'express';
+import { sendStoredFile } from '../common/stored-files';
 import { CurrentUser } from '../tickets/auth.decorator';
 import { AuthenticatedUser } from '../tickets/ticket.types';
 import { ChangePasswordDto, UpdateProfileDto } from './profile.dto';
@@ -41,18 +42,20 @@ export class ProfileController {
 
 @Controller('users')
 export class UserAvatarController {
+  private readonly logger = new Logger(UserAvatarController.name);
+
   constructor(private readonly profileService: ProfileService) {}
 
   @Get(':id/avatar')
   async avatar(@Param('id') id: string, @CurrentUser() _user: AuthenticatedUser, @Res() response: Response): Promise<void> {
-    const { stream, mimeType, size } = await this.profileService.openAvatar(id);
+    const { file, mimeType } = await this.profileService.openAvatar(id);
     response.set({
       'Content-Type': mimeType,
-      'Content-Length': String(size),
+      'Content-Length': String(file.size),
       'Content-Disposition': 'inline',
       'X-Content-Type-Options': 'nosniff',
       'Cache-Control': 'private, max-age=300',
     });
-    stream.pipe(response);
+    sendStoredFile(response, file, this.logger, `profile photo of user ${id}`);
   }
 }

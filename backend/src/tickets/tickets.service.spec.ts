@@ -28,14 +28,22 @@ describe('TicketsService', () => {
       },
     } as unknown as NotificationsService;
 
+    // Behaves like the database: reads return copies, and an update only applies when the version still matches.
     const records = new Map<string, TicketEntity>();
     const repository = {
-      save: async (ticket: TicketEntity) => {
-        records.set(ticket.id, ticket);
-        return ticket;
+      insert: async (ticket: TicketEntity) => {
+        records.set(ticket.id, structuredClone(ticket));
+        return {};
       },
-      find: async () => [...records.values()],
-      findOneBy: async ({ id }: { id: string }) => records.get(id),
+      find: async () => [...records.values()].map((ticket) => structuredClone(ticket)),
+      findOneBy: async ({ id }: { id: string }) => (records.has(id) ? structuredClone(records.get(id)) : null),
+      update: async ({ id, version }: { id: string; version: number }, changes: Partial<TicketEntity>) => {
+        const current = records.get(id);
+        if (!current || current.version !== version) return { affected: 0 };
+        const written = Object.fromEntries(Object.entries(changes).filter(([, value]) => value !== undefined));
+        records.set(id, { ...current, ...written } as TicketEntity);
+        return { affected: 1 };
+      },
     } as unknown as Repository<TicketEntity>;
 
     const userRepository = {
@@ -81,7 +89,7 @@ describe('TicketsService', () => {
       { to: 'helpdesk', kind: 'ticket-resolved' },
       { to: 'employee-1', kind: 'ticket-resolved' },
     ]);
-    expect(resolved.auditEvents).toHaveLength(5);
+    expect(await service.auditEvents(ticket.id, helpdesk)).toHaveLength(5);
   });
 
   it('rejects invalid state transitions', async () => {
@@ -128,7 +136,7 @@ describe('TicketsService', () => {
 
     const approved = await service.approve(ticket.id, { priority: Priority.HIGH, assigneeId: 'assignee-1', expectedDurationHours: 2 }, helpdesk);
     expect(approved).toMatchObject({ status: TicketStatus.ASSIGNED, priority: Priority.HIGH, assigneeId: 'assignee-1', expectedDurationHours: 2 });
-    expect(approved.auditEvents.map((event) => event.action)).toEqual(['TICKET_SUBMITTED', 'TICKET_APPROVED', 'TICKET_ASSIGNED']);
+    expect((await service.auditEvents(ticket.id, helpdesk)).map((event) => event.action)).toEqual(['TICKET_SUBMITTED', 'TICKET_APPROVED', 'TICKET_ASSIGNED']);
 
     await expect(service.approve(ticket.id, { priority: Priority.LOW }, helpdesk)).rejects.toThrow(
       'This action needs the ticket to be Pending, but it is Assigned. Refresh to see its latest state.',

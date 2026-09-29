@@ -30,7 +30,8 @@ POST   /api/auth/reset-password/verify-code ({ email, code } -> { valid: true } 
 POST   /api/auth/reset-password            ({ token, newPassword })
 POST   /api/auth/logout                  (records the sign-out in the audit log)
 GET    /api/auth/users          (Helpdesk only)
-POST   /api/tickets
+GET    /api/health                       (public; { status, database }, or 503 when the database cannot be reached)
+POST   /api/tickets                      (optional Idempotency-Key header: repeating a submission returns the same ticket)
 GET    /api/tickets
 GET    /api/tickets/:id
 POST   /api/tickets/:id/approve           ({ priority } or { priority, assigneeId, expectedDurationHours } to approve and assign in one step)
@@ -59,7 +60,7 @@ Every security- and workflow-relevant action is written to the append-only `audi
 
 | Category | Actions                                                                                                                                               |
 | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `auth`   | `LOGIN_SUCCEEDED`, `LOGIN_FAILED` (with the attempted email and the reason), `SIGNUP`, `SIGNUP_FAILED`, `LOGOUT`                                      |
+| `auth`   | `LOGIN_SUCCEEDED`, `LOGIN_FAILED` (with the attempted email and the reason), `LOGIN_LOCKED` (attempt limit reached), `SIGNUP`, `SIGNUP_FAILED`, `LOGOUT` |
 | `ticket` | `TICKET_SUBMITTED`, `TICKET_APPROVED`, `TICKET_REJECTED`, `PRIORITY_CHANGED`, `TICKET_ASSIGNED`, `TICKET_CLAIMED`, `TICKET_RESOLVED`, `COMMENT_ADDED` |
 | `access` | `SESSION_REJECTED` (401: missing, forged or expired session), `ACCESS_DENIED` (403: role not allowed)                                                 |
 
@@ -94,9 +95,21 @@ Comments can be read and added by the requester, the assignee and Helpdesk while
 `POST /api/tickets` saves the ticket straight away with `aiResult: { source: "pending" }`. A background queue then asks the AI model to analyse it, one ticket at a time so the provider's concurrent-request limit is respected. The result replaces `aiResult` with one of:
 
 - `source: "ai"`: the model's analysis (`summary`, `clarifiedDescription`, `issueType`, `severity`, `recommendedAction`, `missingInformation`, `isUnclear`).
-- `source: "failed"`: the AI could not answer. `failureCode` is `not-configured`, `timeout`, `rate-limited`, `provider-error`, `network` or `invalid-response`, and `failureReason` explains it in plain language. No substitute analysis is generated.
+- `source: "failed"`: the AI could not answer. `failureCode` is `not-configured`, `timeout`, `rate-limited`, `provider-error`, `network`, `invalid-response` or `unavailable` (not sent, because requests are paused after repeated outages), and `failureReason` explains it in plain language. No substitute analysis is generated.
 
 Busy or overloaded responses (429, 5xx), network errors and unusable answers are retried up to 3 times, with 5 s and 15 s pauses. Timeouts and rejected API keys are not retried. Each request waits up to 90 s (`RQSTY_TIMEOUT_MS`). Tickets still pending when the API restarts are picked up again on start-up. Outcomes are recorded in the audit log as `AI_ANALYSIS_COMPLETED`, `AI_ANALYSIS_FAILED` and `AI_ANALYSIS_REQUESTED`.
+
+When the AI service itself is the problem (timeouts, network errors, 429/5xx), the failure is marked `temporary` and the hub tries again on its own after 2, 10 and 30 minutes (`retryAt` and `autoRetries` on the failure; checked every minute and after restarts). After 3 such failures in a row, AI requests pause for 2 minutes, so new tickets fail at once (`unavailable`) instead of each waiting for a timeout. Helpdesk's retry button works at any time.
+
+## Reliability
+
+- **Sign-in limits:** 5 failed sign-ins for one account, or 30 from one network address, within 15 minutes pause sign-in for the rest of that window (`429` with a `Retry-After` header, before any password check). Also per network address: 20 sign-ups per hour and 10 "forgot password" requests per 15 minutes. Password hashing runs off the main thread, so sign-ins never stall other requests.
+- **Simultaneous changes:** a ticket is saved only if its `version` is unchanged since it was read. Otherwise the action runs again on the latest copy, so it never overwrites someone else's change; if it no longer applies (e.g. already approved), the reply is the usual `409` with the current state.
+- **Duplicate submissions:** with an `Idempotency-Key` header (8–100 letters, digits, `-` or `_`), `POST /api/tickets` creates at most one ticket per key and requester; repeats return that ticket.
+- **Single-statement writes:** every request shares one SQLite connection, so the API opens no transactions (one request's rollback could otherwise undo another's work); each write is one statement, and the database waits up to 5 s for a lock before failing.
+- **Files:** a missing stored file answers `404` and a locked one `503`, for that download only.
+- **Responses:** ticket responses leave out the workflow history; read it with `GET /api/tickets/:id/audit-events`.
+- **Background jobs:** the AI queue, scheduled alerts, email retries and backups handle their own errors; an unexpected error is logged and the API keeps running.
 
 ## Attachments
 

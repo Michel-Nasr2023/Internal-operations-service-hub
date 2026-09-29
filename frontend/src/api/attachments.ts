@@ -1,4 +1,5 @@
 import { authFetch } from './auth';
+import { TRANSFER_TIMEOUT_MS } from './http';
 
 export interface TicketAttachment {
   id: string;
@@ -35,7 +36,7 @@ export async function uploadAttachments(ticketId: string, files: File[]): Promis
   for (const file of files) form.append('files', file, file.name);
 
   // No Content-Type header: the browser sets the multipart boundary itself.
-  const response = await authFetch(`${apiUrl}/tickets/${ticketId}/attachments`, { method: 'POST', body: form });
+  const response = await authFetch(`${apiUrl}/tickets/${ticketId}/attachments`, { method: 'POST', body: form }, TRANSFER_TIMEOUT_MS);
 
   if (!response.ok) {
     const error = await response.json().catch(() => null);
@@ -48,7 +49,7 @@ export async function uploadAttachments(ticketId: string, files: File[]): Promis
 
 // Downloads go through the API (the file needs the user's session), then are handed to the browser as a file.
 export async function downloadAttachment(attachment: TicketAttachment): Promise<void> {
-  const response = await authFetch(`${apiUrl}/tickets/${attachment.ticketId}/attachments/${attachment.id}/download`);
+  const response = await authFetch(`${apiUrl}/tickets/${attachment.ticketId}/attachments/${attachment.id}/download`, {}, TRANSFER_TIMEOUT_MS);
 
   if (!response.ok) {
     const error = await response.json().catch(() => null);

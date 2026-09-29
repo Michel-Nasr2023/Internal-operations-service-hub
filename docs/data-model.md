@@ -5,14 +5,14 @@
 | Table | Purpose | Key fields |
 | --- | --- | --- |
 | `users` | Accounts | id, email (unique), password hash, role, name, job title, status (active/disabled), photo, `sessionsRevokedAt` |
-| `tickets` | The request and its workflow state | requester, team, issue type, project/area, title, description, status, priority, assignee, expected hours, claimed/due/resolved times, rejection reason, resolution notes, `reviewedBy`, `assignedBy`, AI result (JSON), history (JSON), version |
+| `tickets` | The request and its workflow state | requester, team, issue type, project/area, title, description, status, priority, assignee, expected hours, claimed/due/resolved times, rejection reason, resolution notes, `reviewedBy`, `assignedBy`, AI result (JSON, incl. automatic retry time), history (JSON), version (checked on every save), submission key |
 | `ticket_comments` | Discussion on a ticket | ticket, author, text, time |
 | `ticket_attachments` | File metadata (bytes on disk) | ticket, uploader, stage (submission/resolution), file name, type, size, storage key |
 | `ticket_views` | When each user last opened a ticket ("new" highlight) | user, ticket, time |
 | `notifications` | In-app alerts, one row per recipient | recipient, ticket, kind, message, read time, dedupe key (unique per recipient) |
 | `audit_log` | Append-only system audit trail | time, category, action, outcome, actor, target, summary, IP, browser, request ID |
 | `password_reset_tokens` | Reset links, codes and invitations | user, token hash, code hash, attempts, expiry, used time |
-| `email_outbox` | Every email sent and its delivery status | recipient, subject, body, status (sent/failed/not sent), error |
+| `email_outbox` | Every email sent and its delivery status | recipient, subject, body, status (sent/retrying/failed/not sent), error, attempts, next attempt |
 
 Fixed values: teams `it`, `facilities`, `finance`; issue types `hardware`, `software`, `network`, `access`; priorities `low`, `medium`, `high`, `urgent`; roles `employee`, `helpdesk`, `administrator`.
 
@@ -50,6 +50,8 @@ Every transition is added to the ticket history and to `audit_log`.
 - A user holding active tickets cannot be disabled or moved to Helpdesk until they are handed over.
 - There is always at least one active administrator; admins cannot disable or demote themselves.
 - Audit entries are never edited or deleted and never contain passwords or tokens.
+- A ticket is saved only if its version is unchanged since it was read; otherwise the action is re-checked on the latest copy, so simultaneous changes never overwrite each other.
+- One ticket per submission key and requester (unique), so a repeated submission never creates a copy.
 
 ## 5. Access
 

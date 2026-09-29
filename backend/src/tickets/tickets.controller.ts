@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Headers, Param, Patch, Post, Query } from '@nestjs/common';
 import { CurrentUser, requireRole } from './auth.decorator';
 import { AddCommentDto, ApproveTicketDto, AssignTicketDto, CreateTicketDto, RejectTicketDto, ResolveTicketDto, SetPriorityDto, TicketListQueryDto } from './ticket.dto';
 import { AuthenticatedUser } from './ticket.types';
@@ -8,10 +8,15 @@ import { TicketsService } from './tickets.service';
 export class TicketsController {
   constructor(private readonly ticketsService: TicketsService) {}
 
+  // Optional Idempotency-Key header: the web form sends one key per submission, so sending the same form again
+  // (e.g. after the connection dropped) returns the ticket already created instead of a duplicate.
   @Post()
-  create(@Body() dto: CreateTicketDto, @CurrentUser() user: AuthenticatedUser) {
+  create(@Body() dto: CreateTicketDto, @CurrentUser() user: AuthenticatedUser, @Headers('idempotency-key') submissionKey?: string) {
     requireRole(user, 'employee');
-    return this.ticketsService.create(dto, user);
+    if (submissionKey !== undefined && !/^[A-Za-z0-9_-]{8,100}$/.test(submissionKey)) {
+      throw new BadRequestException('Idempotency-Key must be 8 to 100 letters, digits, dashes or underscores.');
+    }
+    return this.ticketsService.create(dto, user, submissionKey);
   }
 
   @Get()

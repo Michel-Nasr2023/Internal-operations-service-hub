@@ -3,6 +3,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { createHash, randomBytes, randomInt, randomUUID, timingSafeEqual } from 'node:crypto';
 import { IsNull, MoreThan, Repository } from 'typeorm';
 import { AuditService } from '../audit/audit.service';
+import { currentRequestContext } from '../audit/request-context';
+import { AttemptLimiter, TooManyAttemptsException, waitDescription } from '../common/attempt-limiter';
 import { invitationEmail, passwordResetEmail } from '../mail/mail-templates';
 import { MailService } from '../mail/mail.service';
 import { AuthenticatedUser } from '../tickets/ticket.types';
@@ -14,6 +16,8 @@ import { UserEntity } from './user.entity';
 const RESET_MINUTES = 15;
 const INVITE_LINK_HOURS = 72;
 const MAX_REQUESTS_PER_HOUR = 3;
+// "Forgot password" requests from one network address per 15 minutes.
+const REQUESTS_PER_ADDRESS = 10;
 const MAX_CODE_ATTEMPTS = 5;
 const INVALID_LINK = 'This link is invalid or has expired. Request a new one.';
 // Deliberately the same for a wrong code, an expired one, and an unknown email.
@@ -34,6 +38,7 @@ export type ResetCredential = { token: string } | { email: string; code: string 
 @Injectable()
 export class PasswordResetService {
   private readonly appUrl = (process.env.APP_URL ?? 'http://localhost:5173').replace(/\/$/, '');
+  private readonly requestsByAddress = new AttemptLimiter(REQUESTS_PER_ADDRESS, 15 * 60 * 1000);
 
   constructor(
     @InjectRepository(PasswordResetTokenEntity) private readonly tokenRepository: Repository<PasswordResetTokenEntity>,
@@ -44,6 +49,12 @@ export class PasswordResetService {
 
   // "Forgot password". The caller always gets the same answer, so it cannot be used to find out who has an account.
   async requestReset(email: string): Promise<void> {
+    // Per network address, on top of the per-account limit below: stops one machine sending mail to many accounts.
+    const address = currentRequestContext()?.ip ?? 'unknown';
+    const wait = this.requestsByAddress.blockedFor(address);
+    if (wait > 0) throw new TooManyAttemptsException(`Too many password reset requests from your network. Try again ${waitDescription(wait)}.`, wait);
+    this.requestsByAddress.hit(address);
+
     const normalizedEmail = email.trim().toLowerCase();
     const user = await this.userRepository.findOneBy({ email: normalizedEmail });
 
@@ -156,7 +167,7 @@ export class PasswordResetService {
     const claimed = await this.tokenRepository.update({ id: found.record.id, usedAt: IsNull() }, { usedAt: now });
     if (!claimed.affected) throw new BadRequestException('token' in credential ? INVALID_LINK : INVALID_CODE);
 
-    await this.userRepository.update({ id: found.user.id }, { password: hashPassword(newPassword), passwordChangedAt: now, sessionsRevokedAt: now });
+    await this.userRepository.update({ id: found.user.id }, { password: await hashPassword(newPassword), passwordChangedAt: now, sessionsRevokedAt: now });
     await this.auditService.record({
       category: 'auth',
       action: found.record.purpose === 'invite' ? 'INVITE_ACCEPTED' : 'PASSWORD_RESET_COMPLETED',

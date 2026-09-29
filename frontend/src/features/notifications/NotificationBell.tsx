@@ -3,6 +3,7 @@ import { AppNotification, getNotifications, markAllNotificationsRead, markNotifi
 import { isSoundMuted, playNotificationChime, setSoundMuted, SOUND_PREFERENCE_EVENT } from './notificationSound';
 
 const POLL_INTERVAL_MS = 15000;
+const MAX_POLL_INTERVAL_MS = 120000;
 
 const KIND_LABELS: Record<NotificationKind, string> = {
   'ticket-submitted': 'New',
@@ -47,26 +48,50 @@ export function NotificationBell({ onSelectTicket }: NotificationBellProps) {
     return () => window.removeEventListener(SOUND_PREFERENCE_EVENT, sync);
   }, []);
 
+  // Checks every 15 s while the tab is visible. While the server is unreachable it waits longer between tries
+  // (30 s, 1 min, up to 2 min) instead of hammering it, and it checks at once when the tab is shown again.
   useEffect(() => {
-    async function poll() {
-      try {
-        const latest = await getNotifications();
-        const hasNewUnread = knownIds.current !== null && latest.some((notification) => !notification.readAt && !knownIds.current?.has(notification.id));
-        knownIds.current = new Set(latest.map((notification) => notification.id));
-        setNotifications(latest);
+    let timer = 0;
+    let failures = 0;
+    let inFlight = false;
+    let stopped = false;
 
-        if (hasNewUnread) {
-          setIsRinging(true);
-          if (!isMutedRef.current) playNotificationChime();
+    async function poll() {
+      window.clearTimeout(timer);
+      if (inFlight || stopped) return;
+      inFlight = true;
+      if (!document.hidden) {
+        try {
+          const latest = await getNotifications();
+          const hasNewUnread = knownIds.current !== null && latest.some((notification) => !notification.readAt && !knownIds.current?.has(notification.id));
+          knownIds.current = new Set(latest.map((notification) => notification.id));
+          setNotifications(latest);
+          failures = 0;
+
+          if (hasNewUnread) {
+            setIsRinging(true);
+            if (!isMutedRef.current) playNotificationChime();
+          }
+        } catch {
+          // Keep showing the last list; the next poll will retry.
+          failures += 1;
         }
-      } catch {
-        // Keep showing the last list; the next poll will retry.
       }
+      inFlight = false;
+      if (!stopped) timer = window.setTimeout(() => void poll(), Math.min(POLL_INTERVAL_MS * 2 ** failures, MAX_POLL_INTERVAL_MS));
+    }
+
+    function onVisibilityChange() {
+      if (!document.hidden) void poll();
     }
 
     void poll();
-    const interval = setInterval(() => void poll(), POLL_INTERVAL_MS);
-    return () => clearInterval(interval);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      stopped = true;
+      window.clearTimeout(timer);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
   }, []);
 
   const unreadCount = notifications.filter((notification) => !notification.readAt).length;

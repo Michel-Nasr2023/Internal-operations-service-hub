@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { getTicket, retryTicketAnalysis, Ticket } from '../../api/tickets';
 
 const PENDING_POLL_MS = 5000;
+// While an automatic retry is scheduled, check less often: it is minutes away.
+const RETRY_POLL_MS = 30000;
 
 interface TicketAiAnalysisPanelProps {
   ticket: Ticket;
@@ -23,19 +25,22 @@ export function TicketAiAnalysisPanel({ ticket, onTicketUpdated, canRetry = fals
   const questions = (isAi && analysis?.missingInformation) || [];
   const requester = ticket.requesterName ?? ticket.requesterId;
 
-  // While the AI is still working, check back every few seconds so the result appears on its own.
+  const retryAt = source === 'failed' ? analysis?.retryAt : undefined;
+
+  // While the AI is working (or an automatic retry is scheduled), check back so the result appears on its own.
   useEffect(() => {
-    if (!isPending || !onTicketUpdated) return;
+    if ((!isPending && !retryAt) || !onTicketUpdated) return;
     const interval = setInterval(async () => {
+      if (document.hidden) return;
       try {
         const latest = await getTicket(ticket.id);
-        if (latest.aiResult?.source !== 'pending') onTicketUpdated(latest);
+        if (latest.aiResult?.source !== source || latest.aiResult?.retryAt !== retryAt) onTicketUpdated(latest);
       } catch {
         // Try again on the next tick.
       }
-    }, PENDING_POLL_MS);
+    }, isPending ? PENDING_POLL_MS : RETRY_POLL_MS);
     return () => clearInterval(interval);
-  }, [isPending, ticket.id, onTicketUpdated]);
+  }, [isPending, retryAt, source, ticket.id, onTicketUpdated]);
 
   async function handleRetry() {
     setRetryError('');
@@ -65,6 +70,12 @@ export function TicketAiAnalysisPanel({ ticket, onTicketUpdated, canRetry = fals
             The AI assistant ran into a problem and could not analyse this ticket.
             {source === 'failed' && analysis?.failureReason ? <> <strong>Reason:</strong> {analysis.failureReason}</> : ' It did not return a usable answer.'}
           </p>
+          {retryAt && (
+            <p>
+              The AI service seems to be temporarily unavailable. The hub will try again automatically at{' '}
+              <strong>{new Date(retryAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</strong>.
+            </p>
+          )}
           <p>Please read the employee's original description below.</p>
           {retryError && <p className="message error" role="alert">{retryError}</p>}
           {canRetry && (

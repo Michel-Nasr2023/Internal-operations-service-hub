@@ -1,7 +1,14 @@
-import { Column, Entity, PrimaryColumn } from 'typeorm';
+import { Column, Entity, Index, PrimaryColumn } from 'typeorm';
 import { AuditEvent, Priority, TicketAiAnalysis, Ticket, TicketStatus } from './ticket.types';
 
+// Indexes for the common lookups: an employee's own requests, their assigned work, and tickets by status
+// (queues, scheduled alerts, dashboards).
 @Entity({ name: 'tickets' })
+@Index(['requesterId'])
+@Index(['assigneeId', 'status'])
+@Index(['status'])
+// One ticket per submission, even if the same submission arrives twice at the same moment.
+@Index(['requesterId', 'submissionKey'], { unique: true })
 export class TicketEntity implements Ticket {
   @PrimaryColumn('text')
   id!: string;
@@ -79,4 +86,7 @@ export class TicketEntity implements Ticket {
 
   @Column('simple-json')
   auditEvents!: AuditEvent[];
+
+  @Column({ type: 'text', nullable: true })
+  submissionKey?: string;
 }

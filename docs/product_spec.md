@@ -48,7 +48,7 @@ Employees, department managers, IT team, HR, finance, procurement, security team
 
 **AI assistance**
 
-13. On submission, an AI model rewrites the description for Helpdesk, suggests issue type and severity, recommends a first step and lists questions to ask. Unclear tickets are flagged. If the AI fails, the ticket is marked "AI analysis failed" and Helpdesk can retry. The employee's original description is always shown as well.
+13. On submission, an AI model rewrites the description for Helpdesk, suggests issue type and severity, recommends a first step and lists questions to ask. Unclear tickets are flagged. If the AI fails, the ticket is marked "AI analysis failed" and Helpdesk can retry; temporary AI outages are also retried automatically. The employee's original description is always shown as well.
 
 **Notifications**
 
@@ -70,9 +70,10 @@ Employees, department managers, IT team, HR, finance, procurement, security team
 
 - Fast response for common operations; ticket submission does not wait for the AI.
 - Data privacy: employees only see their own tickets; files and history follow the same rule.
-- Security: hashed passwords, signed sessions that can be revoked, server-side validation.
+- Security: hashed passwords, signed sessions that can be revoked, sign-in attempt limits, server-side validation.
 - Audit trail for all workflow, sign-in and access-denied events.
 - Usable on desktop and mobile; clear UI for non-technical staff.
+- Reliability: when the AI, email, network or a page fails, users get a clear message and the hub retries automatically where possible; simultaneous edits and repeated submissions never overwrite or duplicate tickets; the database is backed up daily.
 
 ## 7. Assumptions
 
@@ -104,3 +105,4 @@ External customer support, payroll, vendor management.
 - Dashboards show open, in-progress and overdue tickets.
 - Notifications reach Helpdesk, assignees and requesters.
 - A forgotten password can be reset by email.
+- If the AI, email or the connection fails, users see a clear message and the hub recovers without losing data.

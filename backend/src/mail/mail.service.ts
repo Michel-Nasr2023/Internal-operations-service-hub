@@ -1,11 +1,24 @@
-import 'dotenv/config';
+import '../common/env';
 
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { randomUUID } from 'node:crypto';
 import { createTransport, Transporter } from 'nodemailer';
-import { Repository } from 'typeorm';
+import { LessThanOrEqual, Repository } from 'typeorm';
 import { OutboxEmailEntity } from './outbox-email.entity';
+
+// Pause before attempt 2 and attempt 3 of an email that failed for a temporary reason.
+const RETRY_DELAYS_MS = [60 * 1000, 5 * 60 * 1000];
+const RETRY_CHECK_INTERVAL_MS = 60 * 1000;
+// Connection problems that usually pass: unreachable, timed out, connection dropped.
+const TEMPORARY_ERROR_CODES = new Set(['ECONNECTION', 'ETIMEDOUT', 'ESOCKET', 'EDNS', 'ECONNRESET', 'ECONNREFUSED']);
+
+// Temporary: a connection problem, or a 4xx SMTP reply ("try again later"). Not temporary: a wrong login
+// (EAUTH), a refused address (EENVELOPE) or a 5xx reply, which retrying cannot fix.
+function isTemporaryMailError(error: unknown): boolean {
+  const { code, responseCode } = (error ?? {}) as { code?: string; responseCode?: number };
+  return (!!code && TEMPORARY_ERROR_CODES.has(code)) || (typeof responseCode === 'number' && responseCode >= 400 && responseCode < 500);
+}
 
 export interface OutgoingEmail {
   to: string;
@@ -31,13 +44,15 @@ export interface MailStatus {
 // (Gmail, Outlook / Microsoft 365, or any mail server); without them, emails are only recorded in the outbox
 // and printed in the server console. Every email and its delivery result is kept in the outbox.
 @Injectable()
-export class MailService implements OnModuleInit {
+export class MailService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(MailService.name);
   private readonly host = process.env.SMTP_HOST;
   private readonly from = process.env.MAIL_FROM ?? process.env.SMTP_USER ?? 'no-reply@localhost';
   private readonly transporter: Transporter | null;
   private connection: MailStatus['connection'] = 'not-configured';
   private connectionError?: string;
+  private timer?: NodeJS.Timeout;
+  private retrying = false;
 
   constructor(@InjectRepository(OutboxEmailEntity) private readonly outboxRepository: Repository<OutboxEmailEntity>) {
     if (this.host && process.env.NODE_ENV !== 'test') {
@@ -66,6 +81,8 @@ export class MailService implements OnModuleInit {
       }
       return;
     }
+    this.timer = setInterval(() => void this.retryDue(), RETRY_CHECK_INTERVAL_MS);
+    this.timer.unref();
     try {
       await this.transporter.verify();
       this.connection = 'ok';
@@ -77,36 +94,76 @@ export class MailService implements OnModuleInit {
     }
   }
 
+  onModuleDestroy(): void {
+    if (this.timer) clearInterval(this.timer);
+  }
+
   // Never throws: a delivery problem is recorded on the outbox row, so the caller's action still succeeds.
   async send(email: OutgoingEmail): Promise<void> {
-    const id = randomUUID();
-    await this.outboxRepository.insert({
-      id,
+    const row = {
+      id: randomUUID(),
       to: email.to,
       subject: email.subject,
       body: email.body,
+      html: email.html ?? null,
       purpose: email.purpose,
-      status: 'not-configured',
+      status: 'not-configured' as const,
+      attempts: 0,
       createdAt: new Date().toISOString(),
-    });
+    };
+    await this.outboxRepository.insert(row);
 
     if (!this.transporter) {
       if (process.env.NODE_ENV !== 'test') this.logger.log(`Email to ${email.to} (not sent, no mail server) — ${email.subject}\n${email.body}`);
       return;
     }
+    await this.deliver(row);
+  }
 
+  // Plan B for email: emails that failed for a temporary reason are sent again when their retry is due.
+  // Runs every minute; never throws, and never overlaps itself.
+  async retryDue(now = new Date()): Promise<void> {
+    if (!this.transporter || this.retrying) return;
+    this.retrying = true;
     try {
-      await this.transporter.sendMail({ from: this.from, to: email.to, subject: email.subject, text: email.body, html: email.html });
-      await this.outboxRepository.update({ id }, { status: 'sent', sentAt: new Date().toISOString(), error: null });
+      const due = await this.outboxRepository.find({
+        where: { status: 'retrying', nextAttemptAt: LessThanOrEqual(now.toISOString()) },
+        order: { createdAt: 'ASC' },
+        take: 20,
+      });
+      for (const row of due) await this.deliver(row);
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      await this.outboxRepository.update({ id }, { status: 'failed', error: message.slice(0, 500) });
-      this.logger.error(`Email to ${email.to} failed: ${message}`);
+      this.logger.error(`Email retries could not run: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      this.retrying = false;
     }
   }
 
-  async listOutbox(limit = 50): Promise<OutboxEmailEntity[]> {
-    return this.outboxRepository.find({ order: { createdAt: 'DESC' }, take: Math.min(Math.max(limit, 1), 200) });
+  // One delivery attempt. A temporary problem (mail server unreachable, timed out or busy) is retried after
+  // 1 and then 5 minutes, well within a reset code's 15 minutes. A refusal (wrong password, bad address) or a
+  // third failure stays "failed" with the reason.
+  private async deliver(row: Pick<OutboxEmailEntity, 'id' | 'to' | 'subject' | 'body' | 'html' | 'attempts'>): Promise<void> {
+    const attempts = row.attempts + 1;
+    try {
+      await this.transporter!.sendMail({ from: this.from, to: row.to, subject: row.subject, text: row.body, html: row.html ?? undefined });
+      await this.outboxRepository.update({ id: row.id }, { status: 'sent', sentAt: new Date().toISOString(), error: null, attempts, nextAttemptAt: null });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const delay = isTemporaryMailError(error) ? RETRY_DELAYS_MS[attempts - 1] : undefined;
+      await this.outboxRepository.update(
+        { id: row.id },
+        { status: delay ? 'retrying' : 'failed', error: message.slice(0, 500), attempts, nextAttemptAt: delay ? new Date(Date.now() + delay).toISOString() : null },
+      );
+      this.logger.error(`Email to ${row.to} failed (attempt ${attempts}): ${message}${delay ? ` — trying again in ${delay / 60000} min` : ''}`);
+    }
+  }
+
+  async listOutbox(limit = 50): Promise<Omit<OutboxEmailEntity, 'html'>[]> {
+    return this.outboxRepository.find({
+      select: { id: true, to: true, subject: true, body: true, purpose: true, status: true, error: true, attempts: true, nextAttemptAt: true, sentAt: true, createdAt: true },
+      order: { createdAt: 'DESC' },
+      take: Math.min(Math.max(limit, 1), 200),
+    });
   }
 
   async status(): Promise<MailStatus> {

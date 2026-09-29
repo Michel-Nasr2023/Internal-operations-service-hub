@@ -1,7 +1,7 @@
 import { DataSource } from 'typeorm';
 import { TicketEntity } from './ticket.entity';
 import { TicketsService } from './tickets.service';
-import { Priority, TicketStatus } from './ticket.types';
+import { Priority, TicketAiFailure, TicketStatus } from './ticket.types';
 import { RqstyAiService } from '../ai/rqsty-ai.service';
 import { UserEntity } from '../auth/user.entity';
 import { NotificationEntity } from '../notifications/notification.entity';
@@ -238,20 +238,20 @@ describe('TicketsService SQLite integration', () => {
     });
 
     const created = await service.create({ title: 'VPN', description: 'Rejects me.', teamId: 'it', issueType: 'access', project: 'VPN' }, { id: 'employee-1', role: 'employee' });
-    // TypeORM mutates the object passed to save(), so record a copy of what each save was asked to write.
+    // Record a copy of the columns each workflow save was asked to write.
     const repository = dataSource.getRepository(TicketEntity);
-    const originalSave = repository.save.bind(repository);
-    const written: Array<{ aiResult?: unknown }> = [];
-    jest.spyOn(repository, 'save').mockImplementation(((entity: { aiResult?: unknown }) => {
-      written.push({ ...entity });
-      return originalSave(entity as TicketEntity);
-    }) as typeof repository.save);
+    const originalUpdate = repository.update.bind(repository);
+    const written: Array<Record<string, unknown>> = [];
+    jest.spyOn(repository, 'update').mockImplementation(((criteria: Parameters<typeof repository.update>[0], changes: Parameters<typeof repository.update>[1]) => {
+      written.push({ ...(changes as Record<string, unknown>) });
+      return originalUpdate(criteria, changes);
+    }) as typeof repository.update);
 
     try {
       await service.approve(created.id, { priority: Priority.HIGH }, { id: 'helpdesk-1', role: 'helpdesk' });
       // A workflow save never writes the analysis column, so a stale "pending" can't overwrite a finished result.
       expect(written).toHaveLength(1);
-      expect('aiResult' in written[0] ? written[0].aiResult : undefined).toBeUndefined();
+      expect(written[0].aiResult).toBeUndefined();
     } finally {
       finishAnalysis();
     }
@@ -260,6 +260,64 @@ describe('TicketsService SQLite integration', () => {
 
     const persisted = await dataSource.getRepository(TicketEntity).findOneBy({ id: created.id });
     expect(persisted).toMatchObject({ status: TicketStatus.APPROVED, priority: Priority.URGENT, aiResult: { source: 'ai' } });
+  });
+
+  it('lists only the tickets each person may see, without their history', async () => {
+    await dataSource.getRepository(UserEntity).save(users());
+    const { service, queue } = createServices();
+    const helpdesk = { id: 'helpdesk-1', role: 'helpdesk' as const };
+    const submit = (id: string, title: string) =>
+      service.create({ title, description: 'Details.', teamId: 'it', issueType: 'hardware', project: 'Office' }, { id, role: 'employee' });
+
+    const own = await submit('employee-1', 'Own request');
+    const assigned = await submit('employee-2', 'Assigned to Maya');
+    const other = await submit('employee-3', 'Someone else');
+    await service.approve(assigned.id, { priority: Priority.HIGH, assigneeId: 'employee-1', expectedDurationHours: 2 }, helpdesk);
+    await queue.whenIdle();
+
+    expect((await service.list({ id: 'employee-1', role: 'employee' })).map((ticket) => ticket.id).sort()).toEqual([own.id, assigned.id].sort());
+    expect((await service.list({ id: 'employee-3', role: 'employee' })).map((ticket) => ticket.id)).toEqual([other.id]);
+    expect((await service.list({ id: 'employee-1', role: 'employee' }, Priority.HIGH)).map((ticket) => ticket.id)).toEqual([assigned.id]);
+
+    const everything = await service.list(helpdesk);
+    expect(everything).toHaveLength(3);
+    for (const ticket of everything) expect(ticket).not.toHaveProperty('auditEvents');
+  });
+
+  it('never lets two changes made at the same moment overwrite each other', async () => {
+    await dataSource.getRepository(UserEntity).save(users());
+    const { service, queue } = createServices();
+    const employee = { id: 'employee-1', role: 'employee' as const };
+    const helpdesk = { id: 'helpdesk-1', role: 'helpdesk' as const };
+    const repository = dataSource.getRepository(TicketEntity);
+    const newTicket = () => service.create({ title: 'VPN', description: 'Rejects me.', teamId: 'it', issueType: 'access', project: 'VPN' }, employee);
+
+    // A comment whose save starts from a copy read just before Helpdesk approved the ticket.
+    const commented = await newTicket();
+    await queue.whenIdle();
+    const beforeApproval = await repository.findOneBy({ id: commented.id });
+    await service.approve(commented.id, { priority: Priority.HIGH }, helpdesk);
+    const reads = jest.spyOn(repository, 'findOneBy');
+    reads.mockResolvedValueOnce(structuredClone(beforeApproval)).mockResolvedValueOnce(structuredClone(beforeApproval));
+    await service.addComment(commented.id, { body: 'Any update?' }, employee);
+    reads.mockRestore();
+
+    const afterComment = await repository.findOneBy({ id: commented.id });
+    expect(afterComment?.status).toBe(TicketStatus.APPROVED);
+    expect(afterComment?.auditEvents.map((event) => event.action)).toEqual(['TICKET_SUBMITTED', 'TICKET_APPROVED', 'COMMENT_ADDED']);
+
+    // Two Helpdesk members handling the same Pending ticket: the later one is refused, not silently applied.
+    const contested = await newTicket();
+    await queue.whenIdle();
+    const beforeFirstDecision = await repository.findOneBy({ id: contested.id });
+    await service.approve(contested.id, { priority: Priority.LOW }, helpdesk);
+    jest.spyOn(repository, 'findOneBy').mockResolvedValueOnce(structuredClone(beforeFirstDecision));
+    await expect(service.reject(contested.id, { reason: 'Duplicate request' }, { id: 'helpdesk-2', role: 'helpdesk' })).rejects.toThrow(
+      /needs the ticket to be Pending, but it is Approved/,
+    );
+    jest.restoreAllMocks();
+
+    expect(await repository.findOneBy({ id: contested.id })).toMatchObject({ status: TicketStatus.APPROVED, priority: Priority.LOW, reviewedBy: 'helpdesk-1' });
   });
 
   it('records an AI failure instead of a made-up analysis, and lets Helpdesk retry it', async () => {
@@ -271,12 +329,54 @@ describe('TicketsService SQLite integration', () => {
 
     const created = await service.create({ title: 'Laptop', description: 'Slow.', teamId: 'it', issueType: 'hardware', project: 'Laptop' }, { id: 'employee-1', role: 'employee' });
     await queue.whenIdle();
-    expect((await service.findOne(created.id, helpdesk)).aiResult).toEqual(failure);
+    // Not marked temporary, so no automatic retry is planned: only Helpdesk's button.
+    expect((await service.findOne(created.id, helpdesk)).aiResult).toEqual({ ...failure, autoRetries: 0 });
     expect(await dataSource.getRepository(AuditLogEntity).findOneBy({ action: 'AI_ANALYSIS_FAILED', targetId: created.id })).toMatchObject({ outcome: 'failure' });
 
     await expect(service.retryAnalysis(created.id, { id: 'employee-1', role: 'employee' })).rejects.toThrow('Only Helpdesk');
     expect((await service.retryAnalysis(created.id, helpdesk)).aiResult).toMatchObject({ source: 'pending' });
     await queue.whenIdle();
     expect((await service.findOne(created.id, helpdesk)).aiResult).toMatchObject({ source: 'ai' });
+  });
+
+  it('retries an analysis on its own after a temporary AI outage, up to 3 times', async () => {
+    await dataSource.getRepository(UserEntity).save(users());
+    const outage = () => ({
+      source: 'failed' as const,
+      failureCode: 'network',
+      failureReason: 'The server could not reach the AI service after 3 attempts.',
+      attempts: 3,
+      temporary: true,
+      generatedAt: new Date().toISOString(),
+    });
+    let aiIsDown = true;
+    const { service, queue } = createServices(async () => (aiIsDown ? outage() : AI_RESULT));
+    const repository = dataSource.getRepository(TicketEntity);
+    const analysisOf = async (id: string) => (await repository.findOneBy({ id }))?.aiResult as TicketAiFailure;
+    const submit = () => service.create({ title: 'VPN', description: 'Rejects me.', teamId: 'it', issueType: 'access', project: 'VPN' }, { id: 'employee-1', role: 'employee' });
+
+    // Recovers on the first automatic retry once the AI is back.
+    const recovering = await submit();
+    await queue.whenIdle();
+    const first = await analysisOf(recovering.id);
+    expect(first).toMatchObject({ source: 'failed', autoRetries: 0, retryAt: expect.any(String) });
+    await queue.retryDueFailures(new Date(Date.parse(first.retryAt!) - 1000));
+    expect((await analysisOf(recovering.id)).source).toBe('failed');
+
+    aiIsDown = false;
+    await queue.retryDueFailures(new Date(Date.parse(first.retryAt!) + 1000));
+    await queue.whenIdle();
+    expect(await analysisOf(recovering.id)).toMatchObject({ source: 'ai' });
+
+    // A long outage: three automatic retries, then only the manual "Retry" button is left.
+    aiIsDown = true;
+    const stuck = await submit();
+    await queue.whenIdle();
+    for (let retry = 1; retry <= 3; retry += 1) {
+      await queue.retryDueFailures(new Date(Date.parse((await analysisOf(stuck.id)).retryAt!) + 1000));
+      await queue.whenIdle();
+      expect(await analysisOf(stuck.id)).toMatchObject({ source: 'failed', autoRetries: retry });
+    }
+    expect(await analysisOf(stuck.id)).not.toHaveProperty('retryAt');
   });
 });

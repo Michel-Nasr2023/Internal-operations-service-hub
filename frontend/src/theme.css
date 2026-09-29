@@ -1127,3 +1127,60 @@ button[type='submit']:not(.review-button):not(.link-button):not(.password-toggle
   border-radius: 999px;
   background: rgba(18, 32, 39, 0.2);
 }
+
+/* ---------- Plan B states: a page that failed to draw, and a lost connection ---------- */
+
+/* Sized to its content: the page grid would otherwise stretch it (and its buttons) to full height. */
+.error-fallback {
+  display: grid;
+  align-self: start;
+  align-content: start;
+  gap: 10px;
+  justify-items: start;
+  max-width: 640px;
+}
+
+.error-fallback h2 {
+  margin: 0;
+}
+
+.error-fallback p {
+  margin: 0;
+  color: var(--ink-700);
+}
+
+.error-fallback-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+/* Above the page and top bar (z-index 40), below modals (100). */
+.connection-banner {
+  position: fixed;
+  left: 50%;
+  bottom: 20px;
+  z-index: 90;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: max-content;
+  max-width: calc(100vw - 32px);
+  padding: 10px 16px;
+  border-radius: 999px;
+  border: 1px solid rgba(178, 74, 51, 0.35);
+  background: #fff4f0;
+  color: var(--coral-600);
+  font-weight: 600;
+  font-size: 0.92rem;
+  box-shadow: var(--shadow-lg);
+  transform: translateX(-50%);
+}
+
+.connection-banner-restored {
+  border-color: rgba(30, 138, 76, 0.35);
+  background: var(--brand-50);
+  color: var(--brand-600);
+}

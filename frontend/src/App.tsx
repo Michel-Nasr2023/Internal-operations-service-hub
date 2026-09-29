@@ -20,6 +20,7 @@ import { ProfileSettingsModal } from './features/profile/ProfileSettingsModal';
 import { getProfile } from './api/profile';
 import { getMyTickets } from './api/tickets';
 import { NotificationKind } from './api/notifications';
+import { ErrorBoundary } from './ErrorBoundary';
 
 interface LoginFormState {
   email: string;
@@ -164,7 +165,9 @@ export function App() {
   }
 
   const settingsModal = user && settingsTab && (
-    <ProfileSettingsModal user={user} initialTab={settingsTab} onClose={() => setSettingsTab(null)} onUserUpdated={handleUserUpdated} />
+    <ErrorBoundary resetKey={settingsTab}>
+      <ProfileSettingsModal user={user} initialTab={settingsTab} onClose={() => setSettingsTab(null)} onUserUpdated={handleUserUpdated} />
+    </ErrorBoundary>
   );
 
   const logoutModal = isLogoutModalOpen && (
@@ -278,7 +281,9 @@ export function App() {
             </div>
           </div>
           <div className="topbar-actions">
-            <NotificationBell onSelectTicket={(ticketId) => { setStaffTab('queue'); setPendingTicketId(ticketId); }} />
+            <ErrorBoundary fallback={null}>
+              <NotificationBell onSelectTicket={(ticketId) => { setStaffTab('queue'); setPendingTicketId(ticketId); }} />
+            </ErrorBoundary>
             <ProfileMenu user={user} onOpenSettings={setSettingsTab} onLogout={handleLogout} />
           </div>
         </header>
@@ -299,12 +304,14 @@ export function App() {
         </nav>
 
         <div className="employee-layout">
-          {activeTab === 'overview' && <AdminOverviewPage onOpenTab={setStaffTab} />}
-          {activeTab === 'queue' && <HelpdeskDashboardPage currentUserId={user.id} externalOpenTicketId={pendingTicketId} onExternalOpenHandled={() => setPendingTicketId(null)} />}
-          {activeTab === 'workload' && <TeamWorkloadPage />}
-          {activeTab === 'users' && <AdminUsersPage currentUserId={user.id} />}
-          {activeTab === 'activity' && <ActivityLogPage />}
-          {activeTab === 'system' && <AdminSystemPage />}
+          <ErrorBoundary resetKey={activeTab}>
+            {activeTab === 'overview' && <AdminOverviewPage onOpenTab={setStaffTab} />}
+            {activeTab === 'queue' && <HelpdeskDashboardPage currentUserId={user.id} externalOpenTicketId={pendingTicketId} onExternalOpenHandled={() => setPendingTicketId(null)} />}
+            {activeTab === 'workload' && <TeamWorkloadPage />}
+            {activeTab === 'users' && <AdminUsersPage currentUserId={user.id} />}
+            {activeTab === 'activity' && <ActivityLogPage />}
+            {activeTab === 'system' && <AdminSystemPage />}
+          </ErrorBoundary>
         </div>
         {settingsModal}
         {logoutModal}
@@ -323,7 +330,9 @@ export function App() {
           </div>
         </div>
         <div className="topbar-actions">
-          <NotificationBell onSelectTicket={(ticketId, kind) => void openEmployeeTicket(ticketId, kind)} />
+          <ErrorBoundary fallback={null}>
+            <NotificationBell onSelectTicket={(ticketId, kind) => void openEmployeeTicket(ticketId, kind)} />
+          </ErrorBoundary>
           <ProfileMenu user={user} onOpenSettings={setSettingsTab} onLogout={handleLogout} />
         </div>
       </header>
@@ -335,11 +344,13 @@ export function App() {
       </nav>
 
       <div className="employee-layout">
-        {employeeTab === 'requests' ? (
-          <CreateTicketPage userId={user.id} externalOpenTicketId={pendingTicketId} onExternalOpenHandled={() => setPendingTicketId(null)} />
-        ) : (
-          <AssignedTicketsPage userId={user.id} externalOpenTicketId={pendingTicketId} onExternalOpenHandled={() => setPendingTicketId(null)} />
-        )}
+        <ErrorBoundary resetKey={employeeTab}>
+          {employeeTab === 'requests' ? (
+            <CreateTicketPage userId={user.id} externalOpenTicketId={pendingTicketId} onExternalOpenHandled={() => setPendingTicketId(null)} />
+          ) : (
+            <AssignedTicketsPage userId={user.id} externalOpenTicketId={pendingTicketId} onExternalOpenHandled={() => setPendingTicketId(null)} />
+          )}
+        </ErrorBoundary>
       </div>
       {settingsModal}
       {logoutModal}

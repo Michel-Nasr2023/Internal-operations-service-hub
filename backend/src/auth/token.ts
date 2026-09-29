@@ -1,4 +1,4 @@
-import 'dotenv/config';
+import '../common/env';
 
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import { AuthenticatedUser, UserRole } from '../tickets/ticket.types';

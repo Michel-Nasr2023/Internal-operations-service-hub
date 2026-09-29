@@ -18,17 +18,29 @@ export class OutboxEmailEntity {
   @Column('text')
   body!: string;
 
+  // Rich version, kept so an automatic retry sends exactly the same email.
+  @Column({ type: 'text', nullable: true })
+  html?: string | null;
+
   // What the email is for, e.g. "password-reset" or "account-invite".
   @Column('text')
   purpose!: string;
 
-  // sent: accepted by the mail server · failed: the server refused or could not be reached ·
+  // sent: accepted by the mail server · retrying: a temporary problem (server unreachable or busy), tried again
+  // automatically at nextAttemptAt · failed: refused, or still failing after the retries ·
   // not-configured: no mail server set up, so it was only recorded here and in the console.
   @Column({ type: 'text', default: 'not-configured' })
-  status!: 'sent' | 'failed' | 'not-configured';
+  status!: 'sent' | 'retrying' | 'failed' | 'not-configured';
 
   @Column({ type: 'text', nullable: true })
   error?: string | null;
+
+  // Delivery attempts made so far.
+  @Column({ type: 'integer', default: 0 })
+  attempts!: number;
+
+  @Column({ type: 'text', nullable: true })
+  nextAttemptAt?: string | null;
 
   @Column({ type: 'text', nullable: true })
   sentAt?: string | null;

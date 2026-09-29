@@ -1,6 +1,7 @@
-import { Controller, Get, Param, Post, Res, UploadedFiles, UseInterceptors } from '@nestjs/common';
+import { Controller, Get, Logger, Param, Post, Res, UploadedFiles, UseInterceptors } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { Response } from 'express';
+import { sendStoredFile } from '../common/stored-files';
 import { CurrentUser } from './auth.decorator';
 import { MAX_FILE_SIZE_BYTES, MAX_FILES_PER_UPLOAD } from './attachment-rules';
 import { TicketAttachmentsService, UploadedFileData } from './ticket-attachments.service';
@@ -8,6 +9,8 @@ import { AuthenticatedUser } from './ticket.types';
 
 @Controller('tickets/:id/attachments')
 export class TicketAttachmentsController {
+  private readonly logger = new Logger(TicketAttachmentsController.name);
+
   constructor(private readonly attachmentsService: TicketAttachmentsService) {}
 
   @Get()
@@ -29,16 +32,16 @@ export class TicketAttachmentsController {
     @CurrentUser() user: AuthenticatedUser,
     @Res() response: Response,
   ): Promise<void> {
-    const { attachment, stream } = await this.attachmentsService.openForDownload(id, attachmentId, user);
+    const { attachment, file } = await this.attachmentsService.openForDownload(id, attachmentId, user);
 
     // Always a download, never rendered in the page; the type comes from our allow-list, not the uploader.
     response.set({
       'Content-Type': attachment.mimeType,
-      'Content-Length': String(attachment.size),
+      'Content-Length': String(file.size),
       'Content-Disposition': `attachment; filename="${attachment.fileName.replace(/[^\x20-\x7e]/g, '_')}"; filename*=UTF-8''${encodeURIComponent(attachment.fileName)}`,
       'X-Content-Type-Options': 'nosniff',
       'Cache-Control': 'private, no-store',
     });
-    stream.pipe(response);
+    sendStoredFile(response, file, this.logger, `attachment ${attachment.id}`);
   }
 }

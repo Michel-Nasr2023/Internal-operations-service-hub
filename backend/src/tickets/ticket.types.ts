@@ -46,7 +46,8 @@ export interface TicketAiResult {
   generatedAt: string;
 }
 
-export type AiFailureCode = 'not-configured' | 'timeout' | 'rate-limited' | 'provider-error' | 'network' | 'invalid-response';
+// `unavailable`: not sent to the AI at all, because the service kept failing and requests are paused for a while.
+export type AiFailureCode = 'not-configured' | 'timeout' | 'rate-limited' | 'provider-error' | 'network' | 'invalid-response' | 'unavailable';
 
 export interface TicketAiFailure {
   source: 'failed';
@@ -55,11 +56,19 @@ export interface TicketAiFailure {
   failureReason: string;
   attempts: number;
   generatedAt: string;
+  // The AI service was down or overloaded (nothing wrong with this ticket), so trying again later can work.
+  temporary?: boolean;
+  // When the hub will try again by itself; absent when only Helpdesk's "Retry" button is left.
+  retryAt?: string;
+  // Automatic retries already made for this ticket.
+  autoRetries?: number;
 }
 
 export interface TicketAiPending {
   source: 'pending';
   requestedAt: string;
+  // Set when this run is an automatic retry after a temporary failure.
+  autoRetries?: number;
 }
 
 export type TicketAiAnalysis = TicketAiResult | TicketAiFailure | TicketAiPending;
@@ -101,6 +110,8 @@ export interface Ticket {
   updatedAt: string;
   version: number;
   auditEvents: AuditEvent[];
+  // Idempotency key sent with the submission, so a repeated submission returns this ticket instead of a copy.
+  submissionKey?: string;
 }
 
 export interface TicketComment {
@@ -114,8 +125,9 @@ export interface TicketComment {
   createdAt: string;
 }
 
-// Ticket as returned by the API, with display names resolved from the user directory.
-export interface TicketView extends Ticket {
+// Ticket as returned by the API, with display names resolved from the user directory. The workflow history is
+// left out; it has its own endpoint (GET /tickets/:id/audit-events), so lists stay small as tickets grow.
+export interface TicketView extends Omit<Ticket, 'auditEvents' | 'submissionKey'> {
   requesterName?: string;
   assigneeName?: string;
   requesterAvatarUpdatedAt?: string | null;
