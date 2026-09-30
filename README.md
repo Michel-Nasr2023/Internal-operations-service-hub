@@ -41,7 +41,7 @@ React form -> POST /api/tickets -> NestJS validation and authorization -> SQLite
    | --- | --- | --- |
    | `AUTH_SECRET` | Signing sessions (any long random string) | A temporary secret is used, so everyone is signed out whenever the API restarts |
    | `RQSTY_API_KEY` | AI analysis of tickets | Tickets work normally; Helpdesk sees "AI analysis failed: not configured" |
-   | `SMTP_*`, `MAIL_FROM` | Sending password reset and invitation emails | Emails are kept in **Admin > System** instead of being sent (see [Email](#email)) |
+   | `SMTP_*` (or `MAILJET_*`), `MAIL_FROM` | Sending password reset and invitation emails | Emails are kept in **Admin > System** instead of being sent (see [Email](#email)) |
 
 3. Install dependencies once in each package:
 
@@ -103,6 +103,7 @@ To send real email, add SMTP settings to `backend/.env` (see [backend/.env.examp
 | Gmail | `SMTP_HOST=smtp.gmail.com`, `SMTP_PORT=465`, `SMTP_USER=you@gmail.com`, `SMTP_PASS=` a 16-character **App password** (Google Account > Security > 2-Step Verification > App passwords; your normal password will not work) |
 | Outlook / Microsoft 365 | `SMTP_HOST=smtp.office365.com`, `SMTP_PORT=587`, your address and password (SMTP AUTH must be allowed for the mailbox) |
 | Company mail server | Host, port and credentials from your IT team |
+| Mailjet (for hosts that block SMTP, e.g. Railway) | `MAILJET_API_KEY` and `MAILJET_SECRET_KEY` from Mailjet (Account > API keys), with the `MAIL_FROM` address confirmed under Account > Senders. When these are set, they are used instead of SMTP. |
 
 Set `MAIL_FROM` to the sender shown to recipients, e.g. `"Service Hub <you@gmail.com>"`. On start-up the API logs whether it could sign in to the mail server, and **Admin > System** shows the result plus every email with its delivery status (Sent / Retrying / Failed with the reason / Not sent). If the mail server is briefly unreachable, the email is sent again automatically after 1 and 5 minutes. Without SMTP settings, emails are kept in that outbox instead of being delivered (their content is never written to the server logs).
 
@@ -113,7 +114,7 @@ The API copies the database to `backend/data/backups/` when it starts and every 
 ## Tests and Release
 
 ```text
-npm run backend:test      # 64 unit, integration and API end-to-end tests
+npm run backend:test      # 68 unit, integration and API end-to-end tests
 npm run frontend:build    # type check and production build
 npm run eval             # AI evals: 11 fixed tickets against the real AI, results in docs/evals
 npm run smoke -- <url>    # final smoke test of a running hub, e.g. the live app

@@ -41,10 +41,8 @@ RQSTY_API_KEY=<your key>
 RQSTY_API_URL=https://router.requesty.ai/v1/chat/completions
 RQSTY_MODEL=nvidia/nemotron-3-super-120b-a12b
 APP_URL=https://<your address>.up.railway.app
-SMTP_HOST=smtp.gmail.com
-SMTP_PORT=465
-SMTP_USER=<your Gmail address>
-SMTP_PASS=<your Gmail App password>
+MAILJET_API_KEY=<Mailjet API key>
+MAILJET_SECRET_KEY=<Mailjet secret key>
 MAIL_FROM="Service Hub <your Gmail address>"
 ```
 
@@ -60,7 +58,7 @@ Secrets are stored only in Railway, never in the repository. `TRUST_PROXY=1` let
 - From your laptop: `npm run smoke -- https://<your address>.up.railway.app` must end with **SMOKE PASSED**.
 - **Deployments** shows the commit SHA that is live: it must be the submitted one.
 
-If the health check shows `"email":"failed"`, the Railway plan may block outgoing email (SMTP). Everything else keeps working and emails stay in **Admin > System**.
+Email goes through **Mailjet's web API**, because Railway's trial and Hobby plans block outgoing SMTP. In Mailjet (free, 200 emails a day), confirm the `MAIL_FROM` address under **Account > Senders** and create the keys under **Account > API keys**. If the health check shows `"email":"failed"`, **Admin > System** says why (e.g. wrong keys or sender not confirmed); everything else keeps working and emails wait in the outbox.
 
 ## Operating it
 

@@ -13,7 +13,7 @@ A web application for employees to submit operational requests and for Helpdesk 
 | Database               | SQLite via TypeORM               | Users, tickets, comments, attachments metadata, notifications, audit log |
 | File storage           | Disk: `backend/data/` (on Railway, a volume at `/data`) | Ticket attachments, profile photos and database backups                  |
 | AI provider            | Requesty (OpenAI-compatible API) | Ticket analysis on submission                                            |
-| Email                  | SMTP (e.g. Gmail) via Nodemailer | Password reset codes and account invitations                             |
+| Email                  | SMTP (e.g. Gmail) via Nodemailer, or the Mailjet API where SMTP is blocked (Railway) | Password reset codes and account invitations |
 | Hosting                | Railway (one service + volume)   | HTTPS; the API also serves the built web app; health-checked deploys and automatic restarts ([deployment](deployment.md)) |
 
 API modules: `auth` (sign-in, sessions, password reset), `tickets` (workflow, comments, attachments, AI queue), `notifications`, `audit`, `profile`, `admin`, `mail`, `system` (health check, backups).

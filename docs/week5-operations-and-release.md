@@ -13,7 +13,7 @@ After Week 4 the hub had the core ticket flow with AI triage. Week 5 completed i
 | AI | Moved to a background queue: submission never waits. The analysis is shown to **Helpdesk only** (not under the employee's form as in Week 4). A failure is shown as "AI analysis failed" with the reason — no invented fallback — with automatic and manual retry |
 | Notifications | In-app bell with sound; alerts for tickets unclaimed for 24 h and overdue work |
 | Helpdesk | Queue with filters, search, sorting, counters and "new" highlight; team workload; activity log |
-| Accounts | Sign-up, profile and photo, password change, forgot password with a 6-digit email code (real SMTP) |
+| Accounts | Sign-up, profile and photo, password change, forgot password with a 6-digit email code (real email: Gmail SMTP locally, Mailjet API on Railway) |
 | Administration | Overview, user management (roles, disable, invitations, sign out everywhere), system health, email outbox |
 | Security | Sessions checked on every request (revocable), sign-in attempt limits, audit log of sign-ins, refused requests and every action |
 | Reliability | See sections 5–6: no crash on bad files, no lost or duplicated tickets, backups, retries, clear browser messages |
@@ -98,11 +98,11 @@ How it is enforced: every error message goes through `describeError` (removes pa
 
 ## 7. Proof: tests, end-to-end and evals
 
-64 automated tests in 13 suites (`npm run backend:test`):
+68 automated tests in 14 suites (`npm run backend:test`):
 
 | Kind | Suites |
 | --- | --- |
-| Unit | Workflow rules, AI parsing/retries/outage pause, notifications, attempt limiter, log-safe, exception filter, email retries, backups and health |
+| Unit | Workflow rules, AI parsing/retries/outage pause, notifications, attempt limiter, log-safe, exception filter, email retries and Mailjet sending, backups and health |
 | Integration (real SQLite) | Ticket service: history, audit, AI queue and automatic retries, simultaneous edits, visibility per role |
 | API end-to-end (real HTTP + SQLite) | Tickets (incl. duplicates, missing files, attachments), sign-in (incl. limits), profile, password reset, administration |
 
@@ -157,7 +157,7 @@ Hosted on Railway as one service (API + web app) with a persistent volume for th
 | One service with SQLite: it runs as a single instance | Daily backups on the volume; automatic restart on failure; roll back to an earlier deployment in one click |
 | The AI provider can be slow or down | Failures are visible, retried automatically and by hand; the workflow never depends on the AI |
 | Railway's free trial credit runs out | Check the remaining credit before the defense; the paid Hobby plan (about $5/month) keeps it running |
-| The Railway plan may block outgoing email (SMTP) | The app keeps working; emails wait in Admin > System |
+| Railway blocks outgoing SMTP | Email is sent through the Mailjet web API instead; if Mailjet fails, the app keeps working and emails wait in Admin > System |
 
 ## 12. Non-goals respected
 

@@ -57,7 +57,7 @@ export function AdminSystemPage() {
         },
         {
           label: 'Email delivery',
-          ok: status.email.mode === 'smtp' ? status.email.connection === 'ok' || (status.email.connection === 'unchecked' && !status.email.lastFailure) : false,
+          ok: status.email.mode !== 'outbox-only' ? status.email.connection === 'ok' || (status.email.connection === 'unchecked' && !status.email.lastFailure) : false,
           detail:
             status.email.mode === 'outbox-only'
               ? 'No mail server configured (SMTP_HOST): emails are kept in the outbox below and not delivered'

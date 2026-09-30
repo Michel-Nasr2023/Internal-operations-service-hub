@@ -39,7 +39,7 @@ export interface SystemStatus {
   ai: { configured: boolean; model: string; pending: number; failed: number };
   authSecretConfigured: boolean;
   email: {
-    mode: 'smtp' | 'outbox-only';
+    mode: 'smtp' | 'api' | 'outbox-only';
     host?: string;
     from?: string;
     connection: 'ok' | 'failed' | 'unchecked' | 'not-configured';

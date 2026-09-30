@@ -3,8 +3,9 @@ import '../common/env';
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { randomUUID } from 'node:crypto';
-import { createTransport, Transporter } from 'nodemailer';
+import { createTransport } from 'nodemailer';
 import { LessThanOrEqual, Repository } from 'typeorm';
+import { createMailjetTransport, MailTransport } from './mailjet-transport';
 import { OutboxEmailEntity } from './outbox-email.entity';
 import { describeError } from '../common/log-safe';
 
@@ -31,7 +32,7 @@ export interface OutgoingEmail {
 }
 
 export interface MailStatus {
-  mode: 'smtp' | 'outbox-only';
+  mode: 'smtp' | 'api' | 'outbox-only';
   host?: string;
   from?: string;
   // Result of checking the connection and login at start-up.
@@ -41,22 +42,27 @@ export interface MailStatus {
   lastFailure?: { at: string; error: string } | null;
 }
 
-// Single place where email leaves the system. With SMTP settings in the environment it sends real email
-// (Gmail, Outlook / Microsoft 365, or any mail server); without them, emails are only recorded in the outbox
-// (Admin > System). Every email and its delivery result is kept in the outbox; logs never contain the body.
+// Single place where email leaves the system. With Mailjet API keys it sends through Mailjet's web API (for hosts
+// that block SMTP, such as Railway); otherwise with SMTP settings it sends through a mail server (Gmail, Outlook /
+// Microsoft 365, ...); with neither, emails are only recorded in the outbox (Admin > System). Every email and its
+// delivery result is kept in the outbox; logs never contain the body.
 @Injectable()
 export class MailService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(MailService.name);
-  private readonly host = process.env.SMTP_HOST;
+  private readonly useMailjet = !!(process.env.MAILJET_API_KEY && process.env.MAILJET_SECRET_KEY);
+  private readonly host = this.useMailjet ? 'Mailjet API' : process.env.SMTP_HOST;
   private readonly from = process.env.MAIL_FROM ?? process.env.SMTP_USER ?? 'no-reply@localhost';
-  private readonly transporter: Transporter | null;
+  private readonly transporter: MailTransport | null;
   private connection: MailStatus['connection'] = 'not-configured';
   private connectionError?: string;
   private timer?: NodeJS.Timeout;
   private retrying = false;
 
   constructor(@InjectRepository(OutboxEmailEntity) private readonly outboxRepository: Repository<OutboxEmailEntity>) {
-    if (this.host && process.env.NODE_ENV !== 'test') {
+    if (this.useMailjet && process.env.NODE_ENV !== 'test') {
+      this.transporter = createMailjetTransport(process.env.MAILJET_API_KEY!, process.env.MAILJET_SECRET_KEY!, this.from);
+      this.connection = 'unchecked';
+    } else if (this.host && process.env.NODE_ENV !== 'test') {
       const port = Number(process.env.SMTP_PORT ?? 587);
       this.transporter = createTransport({
         host: this.host,
@@ -78,7 +84,7 @@ export class MailService implements OnModuleInit, OnModuleDestroy {
   async onModuleInit(): Promise<void> {
     if (!this.transporter) {
       if (process.env.NODE_ENV !== 'test') {
-        this.logger.warn('SMTP_HOST is not set: emails are kept in the outbox (Admin > System) but not sent.');
+        this.logger.warn('No Mailjet keys or SMTP_HOST: emails are kept in the outbox (Admin > System) but not sent.');
       }
       return;
     }
@@ -87,7 +93,7 @@ export class MailService implements OnModuleInit, OnModuleDestroy {
     try {
       await this.transporter.verify();
       this.connection = 'ok';
-      this.logger.log('Mail server is ready.');
+      this.logger.log(this.useMailjet ? 'Mailjet is ready.' : 'Mail server is ready.');
     } catch (error) {
       this.connection = 'failed';
       this.connectionError = describeError(error);
@@ -181,7 +187,7 @@ export class MailService implements OnModuleInit, OnModuleDestroy {
       this.outboxRepository.findOne({ where: { status: 'failed' }, order: { createdAt: 'DESC' } }),
     ]);
     return {
-      mode: this.transporter ? 'smtp' : 'outbox-only',
+      mode: !this.transporter ? 'outbox-only' : this.useMailjet ? 'api' : 'smtp',
       host: this.host,
       from: this.transporter ? this.from : undefined,
       connection: this.connection,
