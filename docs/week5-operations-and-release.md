@@ -86,7 +86,7 @@ How it is enforced: every error message goes through `describeError` (removes pa
 | --- | --- | --- | --- |
 | AI provider down | "AI analysis failed" with the reason and the next automatic retry time | Retried after 2, 10 and 30 min; after 3 outages in a row requests pause 2 min; Helpdesk can retry at any time | Integration + AI service tests; demo below |
 | Email server unreachable | "Retrying" in Admin > System | Sent again after 1 and 5 min | `mail.service.spec.ts` |
-| API process stops | Banner "Can't reach the server. Reconnecting…" | pm2 restarts it in seconds; pending AI work and due alerts resume on start-up | Demo: `pm2 restart service-hub-api` |
+| API process stops | Banner "Can't reach the server. Reconnecting…", then "Connection restored" | Railway restarts it automatically after a crash; pending AI work and due alerts resume on start-up | Demo: **Restart** the service on Railway |
 | Browser loses connection | Same banner, then "Connection restored" | Checks `/api/health` until it answers | Browser check |
 | A page fails to display | "This page could not be displayed" with Try again; top bar keeps working | Try again / reload | Browser check |
 | Stored file missing or locked | Clear error for that download only | Server keeps running | `tickets.e2e.spec.ts` |
@@ -94,7 +94,7 @@ How it is enforced: every error message goes through `describeError` (removes pa
 | Same ticket submitted twice | One ticket | Idempotency key per submission | `tickets.e2e.spec.ts`, smoke test |
 | Database damaged or lost | — | Restore a daily backup (7 days kept) | `system.spec.ts`; [deployment](deployment.md) |
 
-**Live demo of failure → recovery (AI):** on the VM set `RQSTY_API_URL` to an unreachable address and `pm2 restart service-hub-api`; submit a ticket → Helpdesk sees "AI analysis failed … try again automatically at HH:MM" and the log shows the lines above. Restore the address, restart, press **Retry AI analysis** → the analysis appears. Run the critical path (smoke test) again.
+**Live demo of failure → recovery (AI):** on Railway set the variable `RQSTY_API_URL` to an unreachable address (e.g. `http://127.0.0.1:9/v1/chat/completions`) and deploy; submit a ticket → Helpdesk sees "AI analysis failed … try again automatically at HH:MM" and Railway's logs (**Deployments → View logs**) show the lines above. Restore the address and deploy, press **Retry AI analysis** → the analysis appears. Run the critical path (smoke test) again.
 
 ## 7. Proof: tests, end-to-end and evals
 
@@ -116,7 +116,7 @@ GitHub Actions ([.github/workflows/release-gate.yml](../.github/workflows/releas
 2. Frontend: type check and production build.
 3. No secrets committed: fails if any `.env` file is in the repository.
 
-**GO** only when: all three checks are green on the submitted commit · the live app runs that commit (`bash deploy/update.sh <SHA>`) · `/api/health` shows `ok` with AI `ok` · the smoke test passes on the live URL. Anything red is **NO-GO**.
+**GO** only when: all three checks are green on the submitted commit · Railway's **Deployments** shows that commit live (it deploys only after the checks are green) · `/api/health` shows `ok` with AI `ok` · the smoke test passes on the live URL. Anything red is **NO-GO**.
 
 ## 9. Final smoke test
 
@@ -140,7 +140,7 @@ SMOKE PASSED in 16.2 s (ticket da1dc14d).
 
 ## 10. Live app and access
 
-Hosted on a free Oracle Cloud VM with Caddy (HTTPS) and pm2 — see [deployment](deployment.md). Live URL: given in the submission email and the README.
+Hosted on Railway as one service (API + web app) with a persistent volume for the data — see [deployment](deployment.md). Live URL: given in the submission email and the README.
 
 | Role | Email | Password |
 | --- | --- | --- |
@@ -153,11 +153,12 @@ Hosted on a free Oracle Cloud VM with Caddy (HTTPS) and pm2 — see [deployment]
 
 | Risk | Mitigation |
 | --- | --- |
-| Demo passwords are public: a visitor could change a demo password or lock an account for 15 minutes | On the VM, `npm run user:password -- <email> <password>` restores a password (and `npm run user:role` a role); a lock ends by itself after 15 minutes or at once with `pm2 restart service-hub-api` |
-| One VM with SQLite: if the VM is lost, the app is down | Daily backups, copied off the VM before the defense; redeploy in minutes with `deploy/update.sh` |
+| Demo passwords are public: a visitor could change a demo password or lock an account for 15 minutes | Through `railway ssh`, `npm run user:password -- <email> <password>` restores a password (and `npm run user:role` a role); a lock ends by itself after 15 minutes or at once by restarting the service |
+| One service with SQLite: it runs as a single instance | Daily backups on the volume; automatic restart on failure; roll back to an earlier deployment in one click |
 | The AI provider can be slow or down | Failures are visible, retried automatically and by hand; the workflow never depends on the AI |
-| Oracle may reclaim a VM that stays idle for a week | Use the app and run the smoke test in the days before the defense |
+| Railway's free trial credit runs out | Check the remaining credit before the defense; the paid Hobby plan (about $5/month) keeps it running |
+| The Railway plan may block outgoing email (SMTP) | The app keeps working; emails wait in Admin > System |
 
 ## 12. Non-goals respected
 
-No Kubernetes, microservices, tracing or enterprise SSO; no paid cloud, observability or AI plan beyond the existing key; no RAG, vector database or agents. The hub stays one NestJS API, one React app and one SQLite database on one free VM — the effort went into making that one app reliable, observable and safe.
+No Kubernetes, microservices, tracing or enterprise SSO; no paid observability or AI plan beyond the existing key; no RAG, vector database or agents. The hub stays one NestJS API, one React app and one SQLite database, deployed as one service — the effort went into making that one app reliable, observable and safe.

@@ -11,10 +11,10 @@ A web application for employees to submit operational requests and for Helpdesk 
 | Web interface          | React + Vite                     | Forms, tables, review panels, notifications bell, admin pages            |
 | API / workflow service | NestJS (TypeScript)              | Business rules, state transitions, authorization, validation             |
 | Database               | SQLite via TypeORM               | Users, tickets, comments, attachments metadata, notifications, audit log |
-| File storage           | Local disk (`backend/data/`)     | Ticket attachments, profile photos and database backups                  |
+| File storage           | Disk: `backend/data/` (on Railway, a volume at `/data`) | Ticket attachments, profile photos and database backups                  |
 | AI provider            | Requesty (OpenAI-compatible API) | Ticket analysis on submission                                            |
 | Email                  | SMTP (e.g. Gmail) via Nodemailer | Password reset codes and account invitations                             |
-| Hosting                | Free VM: Caddy + pm2             | HTTPS, serves the web app, forwards `/api`, restarts the API ([deployment](deployment.md)) |
+| Hosting                | Railway (one service + volume)   | HTTPS; the API also serves the built web app; health-checked deploys and automatic restarts ([deployment](deployment.md)) |
 
 API modules: `auth` (sign-in, sessions, password reset), `tickets` (workflow, comments, attachments, AI queue), `notifications`, `audit`, `profile`, `admin`, `mail`, `system` (health check, backups).
 
@@ -51,7 +51,7 @@ API modules: `auth` (sign-in, sessions, password reset), `tickets` (workflow, co
 | Stored file missing or locked | Only that download fails, with a clear message |
 | Database locked or damaged | Waits up to 5 s for a lock; backups at start-up and every 6 h (one per day, last 7 days) in `data/backups` |
 | Unexpected server error | Logged once with its request ID; the user gets a plain "Internal server error"; the server keeps running |
-| API process stops | pm2 restarts it within seconds (and after a VM reboot) |
+| API process stops | Railway restarts it automatically; the browser shows "Reconnecting…" until it is back |
 | Server restarts | Pending AI analyses, due retries and missed 24 h / overdue alerts are picked up on start-up |
 | Server unreachable (browser) | Requests stop after 30 s with a clear message; a banner shows "Reconnecting" and checks the health endpoint until the server is back |
 | A page fails to display | Only that page shows an error with "Try again"; the top bar and other pages keep working |
@@ -72,4 +72,4 @@ API modules: `auth` (sign-in, sessions, password reset), `tickets` (workflow, co
 - **Release gate:** GitHub Actions runs the type checks, builds and all tests, and checks that no `.env` file is committed, on every push. The final smoke test (`npm run smoke -- <url>`) runs the critical journey on the live app. See [Week 5](week5-operations-and-release.md).
 - Automated tests (Jest): workflow rules, AI retries, outages and automatic retries, scheduled notifications, email retries, backups, simultaneous edits, SQLite integration tests, and API end-to-end tests for tickets (including duplicate submissions and missing files), sign-in (including attempt limits), profile, password reset and administration.
 - An empty database is seeded with three development accounts (Employee, Helpdesk, Administrator), listed on the sign-in page.
-- All data lives in `backend/data/`, whichever folder the server is started from; `DATA_DIR` can move it (e.g. out of OneDrive).
+- All data lives in `backend/data/`, whichever folder the server is started from; `DATA_DIR` can move it (e.g. out of OneDrive); on Railway it is the persistent volume at `/data`.

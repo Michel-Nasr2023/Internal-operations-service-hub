@@ -110,7 +110,8 @@ When the AI service itself is the problem (timeouts, network errors, 429/5xx), t
 - **Files:** a missing stored file answers `404` and a locked one `503`, for that download only.
 - **Responses:** ticket responses leave out the workflow history; read it with `GET /api/tickets/:id/audit-events`.
 - **Background jobs:** the AI queue, scheduled alerts, email retries and backups handle their own errors; an unexpected error is logged and the API keeps running.
-- **Behind a web server:** the API trusts `X-Forwarded-For` only from the same machine (Caddy on the VM), so attempt limits and the audit log see each visitor's real address; with `HOST=127.0.0.1` it cannot be reached directly.
+- **Behind a proxy:** with `TRUST_PROXY` (number of proxies in front; Railway: `1`) the API reads each visitor's real address from `X-Forwarded-For`, so attempt limits and the audit log are per visitor. Without it, only a proxy on the same machine is trusted.
+- **Web app:** with `NODE_ENV=production` the API also serves the built React app (`frontend/dist`), so the live hub is one service at one address.
 
 ## Attachments
 
@@ -118,7 +119,7 @@ Attachments are optional. The requester can attach files to their ticket while i
 
 - Up to 5 files per upload, 10 MB each (larger files get `413`), and 10 per ticket.
 - Allowed types: png, jpg, jpeg, gif, webp, pdf, txt, log, csv, docx, xlsx. A file's first bytes must match its extension, so a renamed executable or script is refused. An upload is all-or-nothing.
-- File bytes are stored on disk under a random ID in `backend/data/attachments/` (override with `ATTACHMENTS_DIR`); only metadata is stored in SQLite. Downloads are always served as file downloads with `X-Content-Type-Options: nosniff`.
+- File bytes are stored on disk under a random ID in `attachments/` inside the data folder (`backend/data/` locally, the `/data` volume on Railway; override with `ATTACHMENTS_DIR`); only metadata is stored in SQLite. Downloads are always served as file downloads with `X-Content-Type-Options: nosniff`.
 - Each upload adds an `ATTACHMENTS_ADDED` entry to the ticket history and the audit log.
 
 ## Profile
@@ -135,7 +136,7 @@ GET    /api/users/:id/avatar             (any signed-in user; served inline as a
 ```
 
 - Passwords (sign-up and changes) need at least 8 characters with letters and numbers. A change requires the current password and must differ from it.
-- Profile photos: PNG, JPG or WebP, up to 2 MB, checked by content like attachments, stored in `backend/data/avatars/` (override with `AVATARS_DIR`). The old file is deleted when a photo is replaced or removed.
+- Profile photos: PNG, JPG or WebP, up to 2 MB, checked by content like attachments, stored in `avatars/` inside the data folder (override with `AVATARS_DIR`). The old file is deleted when a photo is replaced or removed.
 - Audit log entries: `PROFILE_UPDATED`, `PASSWORD_CHANGED`, `PASSWORD_CHANGE_FAILED` (with the reason, never the password), `AVATAR_UPDATED`, `AVATAR_REMOVED`.
 
 ## Sessions

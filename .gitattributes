@@ -1,3 +1,0 @@
-# Files run or read on the Linux server keep Unix line endings, even when committed from Windows.
-*.sh text eol=lf
-deploy/Caddyfile text eol=lf

@@ -1,104 +1,77 @@
-# Deployment — Live App on a Free VM
+# Deployment — Live App on Railway
 
-The live app runs on one always-free virtual machine (Oracle Cloud Always Free), so it does not depend on a laptop and costs nothing.
+The live app runs on [Railway](https://railway.com) as **one service**: the NestJS API also serves the built React app, so the whole hub has one address. A **volume** (persistent disk) keeps the SQLite database, attachments, profile photos and backups across restarts and redeploys.
 
 ```text
-Browser ──HTTPS──> Caddy (ports 80/443) ──┬── /api/*  ──> NestJS API on 127.0.0.1:3000 (kept running by pm2)
-                                          └── other   ──> React build (frontend/dist)
-                                                           SQLite, files and backups in backend/data (VM disk)
+Browser ──HTTPS──> Railway ──> one service: node backend/dist/main.js
+                                 ├── /api/*  -> NestJS API
+                                 ├── other   -> React app (frontend/dist)
+                                 └── /data   -> volume: tickets.sqlite, attachments, avatars, backups
 ```
 
-| Part | Why |
+How Railway builds, starts and checks the app is in [railway.json](../railway.json):
+
+| Step | What happens |
 | --- | --- |
-| Oracle Cloud Always Free VM (Ubuntu) | Free, and its disk is permanent: the SQLite database, attachments and backups survive restarts |
-| Caddy | Serves the web app, forwards `/api` to the API, gets a free HTTPS certificate automatically |
-| pm2 | Restarts the API if it ever stops, and after a reboot |
-| DuckDNS | Free domain name (e.g. `your-hub.duckdns.org`) pointing to the VM |
+| Build | Installs and builds the backend and the frontend (the web app calls the API at `/api`) |
+| Start | `node backend/dist/main.js` |
+| Health check | A new deployment only receives traffic once `/api/health` answers `200` |
+| Restart | If the app ever stops with an error, Railway starts it again (up to 10 times in a row) |
 
-Files used: [deploy/Caddyfile](../deploy/Caddyfile), [deploy/ecosystem.config.cjs](../deploy/ecosystem.config.cjs), [deploy/update.sh](../deploy/update.sh).
+## 1. Create the service
 
-## 1. Create the VM
+1. Sign in at [railway.com](https://railway.com) **with GitHub**.
+2. **New Project → Deploy from GitHub repo →** `Internal-operations-service-hub`. The first build starts.
+3. In the service, **Settings → Source**: turn on **Wait for CI**, so a commit is only deployed after the release gate on GitHub is green.
 
-1. Create an Oracle Cloud account (Always Free; a card is asked for verification only).
-2. **Compute > Instances > Create instance**: image **Ubuntu 24.04**, shape **Ampere A1.Flex, 1 OCPU, 6 GB** (Always Free). If it says "out of capacity", use **VM.Standard.E2.1.Micro** instead.
-3. Add your SSH public key, create, and note the **public IP address**.
-4. **Networking > Virtual cloud network > Security list**: add ingress rules for TCP **80** and **443** from `0.0.0.0/0`.
+## 2. Add the volume
 
-## 2. Domain
+Right-click the service (or **⌘K / Ctrl+K**) → **Attach volume** → mount path **`/data`**.
 
-At [duckdns.org](https://www.duckdns.org), sign in, create a subdomain (e.g. `your-hub`) and set it to the VM's public IP.
+## 3. Variables
 
-## 3. Prepare the VM
+In the service, **Variables → Raw Editor**, paste and fill in:
 
-```bash
-ssh ubuntu@<public IP>
-
-# Oracle's Ubuntu images block web traffic in the VM firewall too
-sudo iptables -I INPUT 6 -m state --state NEW -p tcp --dport 80 -j ACCEPT
-sudo iptables -I INPUT 6 -m state --state NEW -p tcp --dport 443 -j ACCEPT
-sudo netfilter-persistent save
-
-# Only on the 1 GB Micro shape: add swap so the build has enough memory
-sudo fallocate -l 2G /swapfile && sudo chmod 600 /swapfile && sudo mkswap /swapfile && sudo swapon /swapfile
-echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
-
-# Node.js 20, build tools (for the SQLite driver), git, pm2
-curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-sudo apt-get install -y nodejs git build-essential python3
-sudo npm install -g pm2
-
-# Caddy (official package)
-sudo apt-get install -y debian-keyring debian-archive-keyring apt-transport-https curl
-curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | sudo gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
-curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | sudo tee /etc/apt/sources.list.d/caddy-stable.list
-sudo apt-get update && sudo apt-get install -y caddy
+```text
+NODE_ENV=production
+DATA_DIR=/data
+TRUST_PROXY=1
+AUTH_SECRET=<a long random string>
+RQSTY_API_KEY=<your key>
+RQSTY_API_URL=https://router.requesty.ai/v1/chat/completions
+RQSTY_MODEL=nvidia/nemotron-3-super-120b-a12b
+APP_URL=https://<your address>.up.railway.app
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=465
+SMTP_USER=<your Gmail address>
+SMTP_PASS=<your Gmail App password>
+MAIL_FROM="Service Hub <your Gmail address>"
 ```
 
-## 4. Get the code and the secrets
+Secrets are stored only in Railway, never in the repository. `TRUST_PROXY=1` lets sign-in limits and the audit log see each visitor's real address behind Railway's proxy.
 
-```bash
-sudo mkdir -p /srv/service-hub && sudo chown ubuntu:ubuntu /srv/service-hub
-git clone https://github.com/Michel-Nasr2023/Internal-operations-service-hub.git /srv/service-hub
-cd /srv/service-hub
-cp backend/.env.example backend/.env
-nano backend/.env
-```
+## 4. Public address
 
-In `backend/.env` set: `AUTH_SECRET` (generate with `openssl rand -hex 32`), `RQSTY_API_KEY`, `APP_URL=https://your-hub.duckdns.org`, and the `SMTP_*` / `MAIL_FROM` settings. This file stays on the server only; it is never committed.
+**Settings → Networking → Generate Domain**. Put that address in `APP_URL` (used in password reset links) and deploy the change.
 
-## 5. Deploy and start
+## 5. Check it
 
-```bash
-bash deploy/update.sh            # builds and starts the latest master (or: bash deploy/update.sh <commit SHA>)
-pm2 startup                      # then run the one command it prints, so the API starts after a reboot
-pm2 save
+- Open `https://<your address>.up.railway.app/api/health` → `{"status":"ok","database":"ok","ai":"ok","email":"ok",...}`
+- From your laptop: `npm run smoke -- https://<your address>.up.railway.app` must end with **SMOKE PASSED**.
+- **Deployments** shows the commit SHA that is live: it must be the submitted one.
 
-sudo cp deploy/Caddyfile /etc/caddy/Caddyfile
-sudo sed -i 's/your-hub.duckdns.org/<your domain>/' /etc/caddy/Caddyfile
-sudo systemctl reload caddy
-```
-
-## 6. Check it
-
-```bash
-curl https://<your domain>/api/health     # {"status":"ok","database":"ok","ai":"ok","email":"ok",...}
-```
-
-From your laptop: `npm run smoke -- https://<your domain>` must end with **SMOKE PASSED**.
+If the health check shows `"email":"failed"`, the Railway plan may block outgoing email (SMTP). Everything else keeps working and emails stay in **Admin > System**.
 
 ## Operating it
 
-| Task | Command |
+| Task | How |
 | --- | --- |
-| Deploy the submitted commit | `bash deploy/update.sh <commit SHA>` |
-| API logs | `pm2 logs service-hub-api` |
-| Restart the API | `pm2 restart service-hub-api` |
-| Status | `pm2 status` · `curl https://<domain>/api/health` |
-| Backups | `backend/data/backups/` (one per day, last 7 days) |
-| Keep a copy off the VM | `scp ubuntu@<ip>:/srv/service-hub/backend/data/backups/*.sqlite .` |
-| Restore a backup | `pm2 stop service-hub-api`, copy the backup over `backend/data/tickets.sqlite`, `pm2 start service-hub-api` |
-| Change a role from the command line | `npm run user:role -- someone@company.com administrator` |
-| Restore a demo password changed by a visitor | `npm run user:password -- admin@company.com Admin12345` |
-| Clear sign-in locks at once | `pm2 restart service-hub-api` (locks also end by themselves after 15 minutes) |
-
-Oracle may reclaim Always Free VMs that stay almost completely idle for a week, so open the app and run the smoke test in the days before the defense.
+| Deploy a new version | Push to `master`; Railway deploys it once the release gate is green |
+| Logs | Service → **Deployments → View logs** (search e.g. `ticket bf5b3b58`) |
+| Restart | Service → **⋮ → Restart** |
+| Roll back | **Deployments →** an earlier deployment **→ Redeploy** |
+| Backups | On the volume in `/data/backups` (one per day, last 7 days) |
+| Run a command on the server | Install the [Railway CLI](https://docs.railway.com/guides/cli), then `railway ssh` |
+| Restore a demo password changed by a visitor | `railway ssh`, then `npm run user:password -- admin@company.com Admin12345` |
+| Clear sign-in locks at once | Restart the service (locks also end by themselves after 15 minutes) |
+| Restore a backup | `railway ssh`, `cp /data/backups/tickets-<date>.sqlite /data/tickets.sqlite`, then restart the service |

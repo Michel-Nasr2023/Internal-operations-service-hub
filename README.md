@@ -121,7 +121,7 @@ npm run smoke -- <url>    # final smoke test of a running hub, e.g. the live app
 
 Every push runs the **release gate** on GitHub Actions ([release-gate.yml](.github/workflows/release-gate.yml)): backend type check, build and tests; frontend build; and a check that no `.env` file is committed. For a local smoke test, point it at the API: `SMOKE_API_URL=http://localhost:3000/api npm run smoke -- http://localhost:5173`.
 
-The live app runs on a free VM; see [Deployment](docs/deployment.md).
+The live app runs on Railway as one service (the API also serves the web app) with a persistent volume for the data; see [Deployment](docs/deployment.md).
 
 See [Week 3 full-stack delivery](docs/week3-full-stack-delivery.md) for the original API contract, workflow tests, and build commands.
 See [Week 4 production AI integration](docs/week4-production-ai.md) for the Requesty integration, AI output validation, and the direct UI evaluation cases.
