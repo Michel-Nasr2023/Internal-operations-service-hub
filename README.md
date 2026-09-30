@@ -2,6 +2,8 @@
 
 The Internal Operations Service Hub is an internal helpdesk system for managing employee operational requests from creation through resolution.
 
+**Live app:** [internal-operations-service-hub-production-fe5c.up.railway.app](https://internal-operations-service-hub-production-fe5c.up.railway.app) · health check: [internal-operations-service-hub-production-fe5c.up.railway.app/api/health](https://internal-operations-service-hub-production-fe5c.up.railway.app/api/health)
+
 > **Checking the project?** The Administrator, Helpdesk and Employee accounts are ready from the first start for quick checking, and new users are created with **Sign up**. See [Accounts for checking the project](#accounts-for-checking-the-project).
 
 ## Project Structure
@@ -37,10 +39,10 @@ React form -> POST /api/tickets -> NestJS validation and authorization -> SQLite
 
    Then fill in `backend/.env`:
 
-   | Setting | Needed for | Without it |
-   | --- | --- | --- |
-   | `AUTH_SECRET` | Signing sessions (any long random string) | A temporary secret is used, so everyone is signed out whenever the API restarts |
-   | `RQSTY_API_KEY` | AI analysis of tickets | Tickets work normally; Helpdesk sees "AI analysis failed: not configured" |
+   | Setting                                | Needed for                                   | Without it                                                                        |
+   | -------------------------------------- | -------------------------------------------- | --------------------------------------------------------------------------------- |
+   | `AUTH_SECRET`                          | Signing sessions (any long random string)    | A temporary secret is used, so everyone is signed out whenever the API restarts   |
+   | `RQSTY_API_KEY`                        | AI analysis of tickets                       | Tickets work normally; Helpdesk sees "AI analysis failed: not configured"         |
    | `SMTP_*` (or `MAILJET_*`), `MAIL_FROM` | Sending password reset and invitation emails | Emails are kept in **Admin > System** instead of being sent (see [Email](#email)) |
 
 3. Install dependencies once in each package:
@@ -61,13 +63,13 @@ The API runs at `http://localhost:3000/api` (health check: `http://localhost:300
 
 ### Accounts for checking the project
 
-**Development accounts (quick checking).** Three accounts exist from the very first start, so every role can be tried straight away. They are also listed on the sign-in page.
+**Development accounts (quick checking).** Three accounts exist from the very first start, so every role can be tried straight away. They are listed only here, not in the app: the sign-in page shows no accounts, and its fields are empty after every sign-out.
 
-| Role | Email | Password | Use it to |
-| --- | --- | --- | --- |
-| Administrator | admin@company.com | Admin12345 | Open the admin area: overview, users, system health, email outbox |
-| Helpdesk | helpdesk@company.com | helpdesk123 | Review, approve, reject and assign tickets |
-| Employee | employee@company.com | employee123 | Submit and follow tickets |
+| Role          | Email                | Password    | Use it to                                                         |
+| ------------- | -------------------- | ----------- | ----------------------------------------------------------------- |
+| Administrator | admin@company.com    | Admin12345  | Open the admin area: overview, users, system health, email outbox |
+| Helpdesk      | helpdesk@company.com | helpdesk123 | Review, approve, reject and assign tickets                        |
+| Employee      | employee@company.com | employee123 | Submit and follow tickets                                         |
 
 **The Administrator is pre-registered.** It cannot be created through sign-up, and it is the way into user management on a new installation. It is also created on an existing database that has no administrator.
 
@@ -98,11 +100,11 @@ Password reset emails contain a **6-digit code** (typed on the Forgot password p
 
 To send real email, add SMTP settings to `backend/.env` (see [backend/.env.example](backend/.env.example)) and restart the API:
 
-| Provider | Settings |
-| --- | --- |
-| Gmail | `SMTP_HOST=smtp.gmail.com`, `SMTP_PORT=465`, `SMTP_USER=you@gmail.com`, `SMTP_PASS=` a 16-character **App password** (Google Account > Security > 2-Step Verification > App passwords; your normal password will not work) |
-| Outlook / Microsoft 365 | `SMTP_HOST=smtp.office365.com`, `SMTP_PORT=587`, your address and password (SMTP AUTH must be allowed for the mailbox) |
-| Company mail server | Host, port and credentials from your IT team |
+| Provider                                          | Settings                                                                                                                                                                                         |
+| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+|                                                   |
+| Outlook / Microsoft 365                           | `SMTP_HOST=smtp.office365.com`, `SMTP_PORT=587`, your address and password (SMTP AUTH must be allowed for the mailbox)                                                                           |
+| Company mail server                               | Host, port and credentials from your IT team                                                                                                                                                     |
 | Mailjet (for hosts that block SMTP, e.g. Railway) | `MAILJET_API_KEY` and `MAILJET_SECRET_KEY` from Mailjet (Account > API keys), with the `MAIL_FROM` address confirmed under Account > Senders. When these are set, they are used instead of SMTP. |
 
 Set `MAIL_FROM` to the sender shown to recipients, e.g. `"Service Hub <you@gmail.com>"`. On start-up the API logs whether it could sign in to the mail server, and **Admin > System** shows the result plus every email with its delivery status (Sent / Retrying / Failed with the reason / Not sent). If the mail server is briefly unreachable, the email is sent again automatically after 1 and 5 minutes. Without SMTP settings, emails are kept in that outbox instead of being delivered (their content is never written to the server logs).
@@ -124,6 +126,7 @@ Every push runs the **release gate** on GitHub Actions ([release-gate.yml](.gith
 
 The live app runs on Railway as one service (the API also serves the web app) with a persistent volume for the data; see [Deployment](docs/deployment.md).
 
+See [Week 2 agentic workflow](docs/week2-agentic-workflow.md) for the first vertical slice (employee ticket creation).
 See [Week 3 full-stack delivery](docs/week3-full-stack-delivery.md) for the original API contract, workflow tests, and build commands.
 See [Week 4 production AI integration](docs/week4-production-ai.md) for the Requesty integration, AI output validation, and the direct UI evaluation cases.
 
@@ -159,6 +162,7 @@ This project is designed for internal staff and operational teams. External cust
 - [Product specification](docs/product_spec.md)
 - [Architecture](docs/architecture.md)
 - [Data model](docs/data-model.md)
+- [Week 2 agentic workflow](docs/week2-agentic-workflow.md)
 - [Week 3 full-stack delivery](docs/week3-full-stack-delivery.md)
 - [Week 4 production AI integration](docs/week4-production-ai.md)
 - [Week 5 operations and release](docs/week5-operations-and-release.md)

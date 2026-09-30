@@ -71,5 +71,5 @@ API modules: `auth` (sign-in, sessions, password reset), `tickets` (workflow, co
 
 - **Release gate:** GitHub Actions runs the type checks, builds and all tests, and checks that no `.env` file is committed, on every push. The final smoke test (`npm run smoke -- <url>`) runs the critical journey on the live app. See [Week 5](week5-operations-and-release.md).
 - Automated tests (Jest): workflow rules, AI retries, outages and automatic retries, scheduled notifications, email retries, backups, simultaneous edits, SQLite integration tests, and API end-to-end tests for tickets (including duplicate submissions and missing files), sign-in (including attempt limits), profile, password reset and administration.
-- An empty database is seeded with three development accounts (Employee, Helpdesk, Administrator), listed on the sign-in page.
+- An empty database is seeded with three development accounts (Employee, Helpdesk, Administrator), listed in the README (not in the app).
 - All data lives in `backend/data/`, whichever folder the server is started from; `DATA_DIR` can move it (e.g. out of OneDrive); on Railway it is the persistent volume at `/data`.

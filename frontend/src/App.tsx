@@ -32,9 +32,10 @@ type StaffTab = 'overview' | 'queue' | 'workload' | 'users' | 'activity' | 'syst
 
 const ORGANIZATION_NAME = 'Internal Operations Service Hub';
 
+// The sign-in form always starts empty, and is emptied again on sign-in, sign-out and session expiry.
 const initialForm: LoginFormState = {
-  email: 'employee@company.com',
-  password: 'employee123',
+  email: '',
+  password: '',
 };
 
 // Password reset and invitation emails link to `/?reset=<token>`.
@@ -80,6 +81,7 @@ export function App() {
     function handleSessionExpired(event: Event) {
       const reason = (event as CustomEvent<string | undefined>).detail;
       setUser(null);
+      setForm(initialForm);
       setAuthView('login');
       setIsLogoutModalOpen(false);
       setSettingsTab(null);
@@ -93,6 +95,9 @@ export function App() {
   function signIn(signedIn: AuthUser) {
     saveStoredUser(signedIn);
     setUser(signedIn);
+    // Nothing typed on the sign-in page stays in memory once the user is in.
+    setForm(initialForm);
+    setError('');
     setStaffTab(signedIn.role === 'administrator' ? 'overview' : 'queue');
     setEmployeeTab('requests');
   }
@@ -142,6 +147,8 @@ export function App() {
     void logoutUser();
     clearStoredUser();
     setUser(null);
+    setForm(initialForm);
+    setError('');
     setAuthView('login');
     setIsLogoutModalOpen(false);
   }
@@ -225,7 +232,7 @@ export function App() {
                 type="email"
                 value={form.email}
                 onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))}
-                placeholder="employee@company.com"
+                placeholder="you@company.com"
                 autoComplete="email"
                 required
               />
@@ -250,12 +257,6 @@ export function App() {
             <button type="submit" disabled={isSubmitting}>{isSubmitting ? 'Signing in...' : 'Sign in'}</button>
           </form>
 
-          <div className="login-credentials">
-            <p className="credentials-title">Development accounts</p>
-            <p className="credential-row"><strong>Employee</strong><span>employee@company.com</span><code>employee123</code></p>
-            <p className="credential-row"><strong>Helpdesk</strong><span>helpdesk@company.com</span><code>helpdesk123</code></p>
-            <p className="credential-row"><strong>Administrator</strong><span>admin@company.com</span><code>Admin12345</code></p>
-          </div>
 
           <p className="auth-switch">
             Need an account? <button type="button" className="link-button" onClick={() => setAuthView('signup')}>Sign up</button>

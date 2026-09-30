@@ -44,6 +44,7 @@ Details: [product specification](product_spec.md), [architecture](architecture.m
 
 ## 4. Health — safe to expose
 
+https://internal-operations-service-hub-production-fe5c.up.railway.app/api/health
 `GET /api/health` is public and answers only the state and a small capability status:
 
 ```json
@@ -140,7 +141,7 @@ SMOKE PASSED in 16.2 s (ticket da1dc14d).
 
 ## 10. Live app and access
 
-Hosted on Railway as one service (API + web app) with a persistent volume for the data — see [deployment](deployment.md). Live URL: given in the submission email and the README.
+Hosted on Railway as one service (API + web app) with a persistent volume for the data — see [deployment](deployment.md). Live URL: **https://internal-operations-service-hub-production-fe5c.up.railway.app** (health: `https://internal-operations-service-hub-production-fe5c.up.railway.app/api/health`).
 
 | Role | Email | Password |
 | --- | --- | --- |

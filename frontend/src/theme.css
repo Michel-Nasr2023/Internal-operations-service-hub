@@ -909,7 +909,7 @@ button[type='submit']:not(.review-button):not(.link-button):not(.password-toggle
   padding-block: clamp(.6rem, 1.4vh, .85rem);
 }
 
-/* Development accounts: one account per line (role, email, password). */
+/* The "Already have an account?" box on the sign-up page. */
 .login-credentials {
   grid-template-columns: 1fr;
   gap: .3rem;
@@ -917,29 +917,6 @@ button[type='submit']:not(.review-button):not(.link-button):not(.password-toggle
   padding: .7rem .85rem;
   font-size: .8rem;
   line-height: 1.4;
-}
-
-.credential-row {
-  display: grid;
-  grid-template-columns: 6.2rem minmax(0, 1fr) auto;
-  align-items: baseline;
-  gap: .6rem;
-}
-
-.credential-row span {
-  overflow: hidden;
-  color: var(--ink-500);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.credential-row code {
-  padding: .05rem .4rem;
-  border-radius: 6px;
-  background: #fff;
-  color: var(--brand-700);
-  font: 600 .76rem 'Space Grotesk', monospace;
-  box-shadow: inset 0 0 0 1px var(--line);
 }
 
 .auth-switch {
